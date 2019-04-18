@@ -21,4 +21,4 @@ set(LIBRARY_OUTPUT_PATH "${BUILD_DIR}/src/udf_samples")
 # where to put generated binaries
 set(EXECUTABLE_OUTPUT_PATH "${BUILD_DIR}/src/udf_samples")
 
-add_library(udfsample SHARED udf_sample.cpp)
+add_library(udfsample SHARED udf_sample.cpp udf_hash64.cpp)

@@ -1,0 +1,3 @@
+/root/doris/be/src/udf_samples/CMakeFiles/rebuild_cache.dir
+/root/doris/be/src/udf_samples/CMakeFiles/udfsample.dir
+/root/doris/be/src/udf_samples/CMakeFiles/edit_cache.dir

@@ -5,6 +5,6 @@
 
 namespace doris_udf {
 
-    BigIntVal AddUdf(FunctionContext* context, const StringVal& arg1);
+    BigIntVal hash64(FunctionContext* context, const StringVal& arg1);
 
 }
