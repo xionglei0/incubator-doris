@@ -26,5 +26,4 @@ void CountInit(FunctionContext* context, BigIntVal* val);
 void CountUpdate(FunctionContext* context, const IntVal& input, BigIntVal* val);
 void CountMerge(FunctionContext* context, const BigIntVal& src, BigIntVal* dst);
 BigIntVal CountFinalize(FunctionContext* context, const BigIntVal& val);
-
 }
