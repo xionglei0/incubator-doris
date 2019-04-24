@@ -4,7 +4,7 @@
 #include <iostream>
 #include <list>
 #include <vector>
-#inculde <set>
+#include <set>
 #include <string.h>
 
 
@@ -12,7 +12,7 @@ using namespace std;
 namespace doris_udf {
 
 #define MAX_EVENT_COUNT 5000
-#define MAGIC_INF 32
+#define MAGIC_INT 32
 
     static int event_distinct_id = 0;
     static const char funnel_tag[] = "funnel";
@@ -28,7 +28,7 @@ namespace doris_udf {
         long _ts;
         int _event_distinct_id;
         Event(short num, long ts, int eventDistinctId) : _num(num), _ts(ts), _event_distinct_id(eventDistinctId) { }
-        init(short num, long ts, int eventDistinctId) {
+        void init(short num, long ts, int eventDistinctId) {
             _num = num;
             _ts = ts;
             _event_distinct_id = eventDistinctId;
@@ -46,37 +46,37 @@ namespace doris_udf {
             } else {
                 return false;
             }
+	    return false;
         }
     };
 
-    struct FunnelInfoAgg: public AnyVal {
-        int[MAX_EVENT_COUNT] old_ids;
+    struct FunnelInfoAgg {
+        int old_ids[MAX_EVENT_COUNT];
         list<Event> _events;
         long _time_window;
         long _start_time;
         int _max_distinct_id;
 
-        public FunnelInfoAgg() {
+        FunnelInfoAgg() {
             _time_window = 0L;
             _start_time = 0L;
-            _max_distinctid = 0;
+            _max_distinct_id = 0;
         }
-        public void init() {
+        void init() {
             _time_window = 0;
             _start_time = 0;
             _max_distinct_id = 0;
         }
 
-        public static FunnelInfoAgg parse(FunctionContext* context, StringVal& aggInfoVal);
 
-        public void add_event(Event *e) {
-            events.push_back(*e);
-            if (e->event_distinct_id > _max_distinct_id) {
-                _max_distinct_id = e->event_distinct_id;
+        void add_event(Event *e) {
+            _events.push_back(*e);
+            if (e->_event_distinct_id > _max_distinct_id) {
+                _max_distinct_id = e->_event_distinct_id;
             }
         }
 
-        public void add_event(short num, long ts, int event_distinct_id) {
+        void add_event(short num, long ts, int event_distinct_id) {
             Event event(num, ts, event_distinct_id);
             _events.push_back(event);
             if (event_distinct_id >  _max_distinct_id) {
@@ -84,20 +84,21 @@ namespace doris_udf {
             }
         }
 
-        public List<Event> get_events() { return _events; }
+        list<Event> get_events() { return _events; }
 
 
-        List<Event> trim(List<Event> events);
+        void trim(list<Event>& events, vector<Event> &rst);
 
         short make_value(int row, int column);
 
-        String output(StringVal* rst);
+        StringVal output(FunctionContext* context, StringVal* rst);
     };
 
-    typedef StringVal FunnelInfoAggVal;
 
-    void FunnelInfoInit(FunctionContext* context, FunnelInfoAggVal* FunnelInfoAggVal);
+    void FunnelInfoInit(FunctionContext* context, StringVal* funnelInfoAggVal);
     void FunnelInfoUpdate(FunctionContext* context, BigIntVal* from_time, IntVal* time_window, TinyIntVal steps, BigIntVal* event_time, FunnelInfoAgg* aggInfo);
     void FunnelInfoMerge(FunctionContext* context, const FunnelInfoAgg& srcAggInfo, FunnelInfoAgg* DestAggInfo);
     StringVal FunnelInfoFinalize(FunctionContext* context, const FunnelInfoAgg& aggInfo);
+
+    FunnelInfoAgg parse(FunctionContext* context, const StringVal& aggInfoVal);
 }
