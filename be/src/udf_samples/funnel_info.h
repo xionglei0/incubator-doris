@@ -57,6 +57,7 @@ namespace doris_udf {
         long _time_window;
         long _start_time;
         int _max_distinct_id;
+	ShortEncode encoder;
 
         FunnelInfoAgg() {
             _time_window = 0L;

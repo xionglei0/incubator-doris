@@ -136,7 +136,9 @@ namespace doris_udf {
 	}
 
 	for(set<short>::iterator iterator = cache.begin(); iterator != cache.end(); iterator++) {
-	    rst_str->append(context, (uint8_t*)&(*iterator), sizeof(short));
+	    short value = *iterator;
+	    string encoded_str = encoder.encode((unsigned char*)&value, sizeof(short));
+	    rst_str->append(context, (uint8_t*)(encoded_str.c_str()), encoded_str.length());
 	}
 	
         return *rst_str;
