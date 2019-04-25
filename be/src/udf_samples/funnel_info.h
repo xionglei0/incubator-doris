@@ -7,6 +7,7 @@
 #include <set>
 #include <string.h>
 
+#include "udf_samples/short_encode.h"
 
 using namespace std;
 namespace doris_udf {
