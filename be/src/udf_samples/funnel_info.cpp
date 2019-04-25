@@ -83,11 +83,16 @@ namespace doris_udf {
 
     StringVal FunnelInfoAgg::output(FunctionContext* context, StringVal* rst_str) {
         // 1: order by events
+        bool show = false;
+        if (_events.size() > 0) show = true;
+	
+        if (show) cout << "_events size:" << _events.size() << endl ;
         _events.sort();
         
         // 2: trim events
         vector<Event> rst;
         this->trim(_events, rst);
+        if (show)cout << "after trim, left event size:" << rst.size() << endl;
         
         // 2.1: check events if exceeds max_event_count;
         if (rst.size() > MAX_EVENT_COUNT) {
@@ -127,6 +132,7 @@ namespace doris_udf {
             }
         }
 
+        if(show) cout << "cache size:" << cache.size() << endl;
 	// 4: make result
 	if (rst_str->len == 0) {
 	    rst_str->is_null = false;

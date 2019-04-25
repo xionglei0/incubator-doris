@@ -1,8 +1,8 @@
 #include "udf_samples/short_encode.h"
 
-std::string ShortEncode::encode(const unsigned char *str, int bytes)
-{
-    int num = 0, bin = 0, i;
+namespace doris_udf {
+
+string ShortEncode::encode(const unsigned char *str, int bytes) {
     std::string _encode_result;
     const unsigned char *current;
     current = str;
@@ -32,14 +32,14 @@ std::string ShortEncode::encode(const unsigned char *str, int bytes)
     return _encode_result;
 }
 
-short Encode::decode(const char *data, size_t length, char *decoded_data)
+short ShortEncode::decode(const char *data, size_t length)
 {
     const char *current = data;
-    char decoded_date[8] = "";
+    char decoded_data[8] = "";
     int ch = 0, i = 0, j = 0, k = 0;
 
     while ((ch = *current++) != '\0' && length-- > 0) {
-        if (ch == base64_pad) {
+        if (ch == this->base64_pad) {
             if (*current != '=' && (i % 4) == 1) {
                 return -1;
             }
@@ -77,7 +77,7 @@ short Encode::decode(const char *data, size_t length, char *decoded_data)
 
     k = j;
     /* mop things up if we ended on a boundary */
-    if (ch == base64_pad) {
+    if (ch == this->base64_pad) {
         switch (i % 4) {
         case 1:
             return 0;
@@ -92,4 +92,6 @@ short Encode::decode(const char *data, size_t length, char *decoded_data)
 
     decoded_data[j] = '\0';
     return *((short *)decoded_data);
+}
+
 }

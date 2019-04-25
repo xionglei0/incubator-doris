@@ -31,12 +31,11 @@ namespace doris_udf
         std::string _base64_table;
         static const char base64_pad = '=';
       public:
-        ShortEncode()
-        {
+        ShortEncode() {
             _base64_table = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
         }
 
-        std::string encode(const unsigned char *str, int bytes);
-        short decode(const char *data, size_t length, char *decoded_data);
+        string encode(const unsigned char *str, int bytes);
+        short decode(const char *data, size_t length);
     };
 }
