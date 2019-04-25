@@ -142,14 +142,14 @@ namespace doris_udf {
         return *rst_str;
     }
 
-    void FunnelInfoInit(FunctionContext* context, StringVal* info_agg_val) {
+    void funnel_info_init(FunctionContext* context, StringVal* info_agg_val) {
         info_agg_val->is_null = false;
         info_agg_val->ptr = context->allocate(tag_size);
         info_agg_val->len = tag_size;
         memcpy(info_agg_val->ptr, funnel_tag, tag_size);
     }
 
-    void FunnelInfoUpdate(FunctionContext *context, BigIntVal *from_time, BigIntVal *time_window, TinyIntVal *steps, BigIntVal *event_time, StringVal *info_agg_val)
+    void funnel_info_update(FunctionContext *context, BigIntVal *from_time, BigIntVal *time_window, TinyIntVal *steps, BigIntVal *event_time, StringVal *info_agg_val)
     {
         if (info_agg_val->len == tag_size)
         {
@@ -172,11 +172,11 @@ namespace doris_udf {
     }
     
     //map side merge and reduce side merge
-    void FunnelInfoMerge(FunctionContext* context, const StringVal& src_agginfo_val, StringVal* dest_agginfo_val) {
+    void funnel_info_merge(FunctionContext* context, const StringVal& src_agginfo_val, StringVal* dest_agginfo_val) {
         dest_agginfo_val->append(context, src_agginfo_val.ptr + tag_size ,src_agginfo_val.len - tag_size) ;
     }
 
-    StringVal FunnelInfoFinalize(FunctionContext* context, const StringVal& aggInfoVal) {
+    StringVal funnel_info_finalize(FunctionContext* context, const StringVal& aggInfoVal) {
         FunnelInfoAgg finalAgg = parse(context, aggInfoVal);
 	StringVal result;
         finalAgg.output(context, &result);

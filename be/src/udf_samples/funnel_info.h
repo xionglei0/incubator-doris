@@ -95,9 +95,9 @@ namespace doris_udf {
     };
 
 
-    void FunnelInfoInit(FunctionContext* context, StringVal* funnelInfoAggVal);
-    void FunnelInfoUpdate(FunctionContext* context, BigIntVal* from_time, IntVal* time_window, TinyIntVal steps, BigIntVal* event_time, FunnelInfoAgg* aggInfo);
-    void FunnelInfoMerge(FunctionContext* context, const FunnelInfoAgg& srcAggInfo, FunnelInfoAgg* DestAggInfo);
+    void funnel_info_init(FunctionContext* context, StringVal* funnelInfoAggVal);
+    void funnel_info_update(FunctionContext* context, BigIntVal* from_time, IntVal* time_window, TinyIntVal steps, BigIntVal* event_time, FunnelInfoAgg* aggInfo);
+    void funnel_info_merge(FunctionContext* context, const FunnelInfoAgg& srcAggInfo, FunnelInfoAgg* DestAggInfo);
     StringVal FunnelInfoFinalize(FunctionContext* context, const FunnelInfoAgg& aggInfo);
 
     FunnelInfoAgg parse(FunctionContext* context, const StringVal& aggInfoVal);
