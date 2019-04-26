@@ -17,7 +17,7 @@ namespace doris_udf {
 
     static int event_distinct_id = 0;
     static const char funnel_tag[] = "funnel";
-    int tag_size = sizeof funnel_tag;
+    const int tag_size = 6;
 
     long get_start_of_day(long ts) {
         long mod = (ts - 57600000) % 86400000;
@@ -57,7 +57,6 @@ namespace doris_udf {
         long _time_window;
         long _start_time;
         int _max_distinct_id;
-	ShortEncode encoder;
 
         FunnelInfoAgg() {
             _time_window = 0L;
@@ -98,7 +97,7 @@ namespace doris_udf {
 
 
     void funnel_info_init(FunctionContext* context, StringVal* funnelInfoAggVal);
-    void funnel_info_update(FunctionContext* context, BigIntVal* from_time, IntVal* time_window, TinyIntVal steps, BigIntVal* event_time, FunnelInfoAgg* aggInfo);
+    void funnel_info_update(FunctionContext* context, BigIntVal& from_time, IntVal& time_window, BigIntVal& steps, BigIntVal& event_time, FunnelInfoAgg* aggInfo);
     void funnel_info_merge(FunctionContext* context, const FunnelInfoAgg& srcAggInfo, FunnelInfoAgg* DestAggInfo);
     StringVal FunnelInfoFinalize(FunctionContext* context, const FunnelInfoAgg& aggInfo);
 
