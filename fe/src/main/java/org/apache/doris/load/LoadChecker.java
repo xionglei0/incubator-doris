@@ -28,11 +28,10 @@ import org.apache.doris.catalog.Replica;
 import org.apache.doris.catalog.Tablet;
 import org.apache.doris.catalog.TabletInvertedIndex;
 import org.apache.doris.common.Config;
-import org.apache.doris.common.MetaNotFoundException;
+import org.apache.doris.common.UserException;
 import org.apache.doris.common.util.Daemon;
 import org.apache.doris.load.AsyncDeleteJob.DeleteState;
 import org.apache.doris.load.FailMsg.CancelType;
-import org.apache.doris.load.LoadJob.EtlJobType;
 import org.apache.doris.load.LoadJob.JobState;
 import org.apache.doris.task.AgentBatchTask;
 import org.apache.doris.task.AgentTaskExecutor;
@@ -52,7 +51,6 @@ import org.apache.doris.thrift.TPushType;
 import org.apache.doris.thrift.TTaskType;
 import org.apache.doris.transaction.GlobalTransactionMgr;
 import org.apache.doris.transaction.TabletCommitInfo;
-import org.apache.doris.transaction.TransactionException;
 import org.apache.doris.transaction.TransactionState;
 import org.apache.doris.transaction.TransactionStatus;
 
@@ -330,7 +328,7 @@ public class LoadChecker extends Daemon {
                 tabletCommitInfos.add(new TabletCommitInfo(tabletId, replica.getBackendId()));
             }
             globalTransactionMgr.commitTransaction(job.getDbId(), job.getTransactionId(), tabletCommitInfos);
-        } catch (MetaNotFoundException | TransactionException e) {
+        } catch (UserException e) {
             LOG.warn("errors while commit transaction [{}], cancel the job {}, reason is {}", 
                     transactionState.getTransactionId(), job, e);
             load.cancelLoadJob(job, CancelType.UNKNOWN, transactionState.getReason());
