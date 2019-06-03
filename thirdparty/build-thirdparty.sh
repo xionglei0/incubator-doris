@@ -173,7 +173,7 @@ build_openssl() {
     CFLAGS="-fPIC" \
     LIBDIR="lib" \
     ./Configure --prefix=$TP_INSTALL_DIR -zlib -shared linux-x86_64
-    make -j$PARALLEL && make install
+    make && make install
     if [ -f $TP_INSTALL_DIR/lib64/libcrypto.a ]; then
         mkdir -p $TP_INSTALL_DIR/lib && \
         cp $TP_INSTALL_DIR/lib64/libcrypto.a $TP_INSTALL_DIR/lib/libcrypto.a && \
@@ -520,7 +520,7 @@ build_librdkafka() {
     CPPFLAGS="-I${TP_INCLUDE_DIR}" \
     LDFLAGS="-L${TP_LIB_DIR}" \
     CFLAGS="-fPIC" \
-    ./configure --prefix=$TP_INSTALL_DIR --enable-static --disable-ssl --disable-sasl
+    ./configure --prefix=$TP_INSTALL_DIR --enable-static --disable-sasl
     make -j$PARALLEL && make install
 }
 
@@ -558,6 +558,25 @@ build_arrow() {
     cp -rf ./uriparser_ep-install/lib/liburiparser.a $TP_INSTALL_DIR/lib64/liburiparser.a
 }
 
+# s2
+build_s2() {
+    check_if_source_exist $S2_SOURCE
+    cd $TP_SOURCE_DIR/s2geometry-0.9.0
+    mkdir build -p && cd build
+    rm -rf CMakeCache.txt CMakeFiles/
+    CXXFLAGS="-O3" \
+    LDFLAGS="-L${TP_LIB_DIR} -static-libstdc++ -static-libgcc" \
+    $CMAKE_CMD -v -DBUILD_SHARED_LIBS=0 -DCMAKE_INSTALL_PREFIX=$TP_INSTALL_DIR \
+    -DCMAKE_INCLUDE_PATH="$TP_INSTALL_DIR/include" \
+    -DBUILD_SHARED_LIBS=OFF \
+    -DGFLAGS_ROOT_DIR="$TP_INSTALL_DIR/include" \
+    -DWITH_GFLAGS=ON \
+    -DGLOG_ROOT_DIR="$TP_INSTALL_DIR/include" \
+    -DWITH_GLOG=ON \
+    -DCMAKE_LIBRARY_PATH="$TP_INSTALL_DIR/lib;$TP_INSTALL_DIR/lib64" ..
+    make -j$PARALLEL && make install
+}
+
 build_llvm
 build_libevent
 build_zlib
@@ -582,6 +601,7 @@ build_brpc
 build_rocksdb
 build_librdkafka
 build_arrow
+build_s2
 
 echo "Finihsed to build all thirdparties"
 

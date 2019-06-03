@@ -2116,8 +2116,15 @@ OLAPStatus OLAPEngine::_create_new_table_header(
     uint32_t key_count = 0;
     bool has_bf_columns = false;
     uint32_t next_unique_id = 0;
-    if (true == is_schema_change_table) {
+    if (is_schema_change_table) {
         next_unique_id = ref_olap_table->next_unique_id();
+    }
+    if (is_schema_change_table && next_unique_id == 0) {
+        LOG(FATAL) << "old_tablet=" << ref_olap_table->full_name()
+            << ", new_tablet=" << request.tablet_id
+            << ", new_schema_hash=" << request.tablet_schema.schema_hash
+            << ", next_unique_id=" << next_unique_id;
+        return OLAP_ERR_INPUT_PARAMETER_ERROR;
     }
     for (TColumn column : request.tablet_schema.columns) {
         if (column.column_type.type == TPrimitiveType::VARCHAR
@@ -2126,7 +2133,7 @@ OLAPStatus OLAPEngine::_create_new_table_header(
             return OLAP_ERR_SCHEMA_SCHEMA_INVALID;
         }
         header->add_column();
-        if (true == is_schema_change_table) {
+        if (is_schema_change_table) {
             /*
              * for schema change, compare old_olap_table and new_olap_table
              * 1. if column in both new_olap_table and old_olap_table,
@@ -2207,7 +2214,7 @@ OLAPStatus OLAPEngine::_create_new_table_header(
         }
         ++i;
     }
-    if (true == is_schema_change_table){
+    if (is_schema_change_table){
         /*
          * for schema change, next_unique_id of new olap table should be greater than
          * next_unique_id of old olap table
@@ -2332,14 +2339,19 @@ void OLAPEngine::revoke_files_from_gc(const std::vector<std::string>& files_to_c
     {
         SCOPED_RAW_TIMER(&duration_ns);
         for (auto& file : files_to_check) {
+            bool found = false;
             for (auto& rowset_gc_files : _gc_files) {
                 auto file_iter =
                         std::find(rowset_gc_files.second.begin(), rowset_gc_files.second.end(), file);
                 if (file_iter != rowset_gc_files.second.end()) {
                     LOG(INFO) << "file:" << file << " exist in unused files to gc. revoke it";
                     rowset_gc_files.second.erase(file_iter);
+                    found = true;
                     break;
                 }
+            }
+            if (!found) {
+                LOG(INFO) << "file:" << file << " does not exist in unused files";
             }
         }
     }
@@ -2831,7 +2843,8 @@ OLAPStatus OLAPEngine::finish_clone(OLAPTablePtr tablet, const string& clone_dir
         std::vector<std::string> files_to_check;
         for (auto& clone_file : clone_files) {
             if (local_files.find(clone_file) != local_files.end()) {
-                files_to_check.push_back(clone_file);
+                string clone_path = tablet_dir + "/" + clone_file;
+                files_to_check.push_back(clone_path);
             }
         }
         revoke_files_from_gc(files_to_check);
@@ -2846,7 +2859,7 @@ OLAPStatus OLAPEngine::finish_clone(OLAPTablePtr tablet, const string& clone_dir
         // link files from clone dir, if file exists, skip it
         for (const string& clone_file : clone_files) {
             if (local_files.find(clone_file) != local_files.end()) {
-                VLOG(3) << "find same file when clone, skip it. "
+                LOG(INFO) << "find same file when clone, skip it. "
                         << "tablet=" << tablet->full_name()
                         << ", clone_file=" << clone_file;
                 continue;
