@@ -20,10 +20,16 @@ package org.apache.doris.catalog;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
-import org.apache.doris.analysis.*;
+import org.apache.doris.analysis.ArithmeticExpr;
+import org.apache.doris.analysis.BinaryPredicate;
+import org.apache.doris.analysis.CastExpr;
+import org.apache.doris.analysis.InPredicate;
+import org.apache.doris.analysis.IsNullPredicate;
+import org.apache.doris.analysis.LikePredicate;
 import org.apache.doris.builtins.ScalarBuiltins;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -535,7 +541,7 @@ public class FunctionSet {
 
         // Next check for strict supertypes
         for (Function f : fns) {
-            if (f.compare(desc, Function.CompareMode.IS_SUPERTYPE_OF)) {
+            if (f.compare(desc, Function.CompareMode.IS_SUPERTYPE_OF) && isCastMatchAllowed(desc, f)) {
                 return f;
             }
         }
@@ -545,11 +551,35 @@ public class FunctionSet {
 
         // Finally check for non-strict supertypes
         for (Function f : fns) {
-            if (f.compare(desc, Function.CompareMode.IS_NONSTRICT_SUPERTYPE_OF)) {
+            if (f.compare(desc, Function.CompareMode.IS_NONSTRICT_SUPERTYPE_OF) && isCastMatchAllowed(desc, f)) {
                 return f;
             }
         }
         return null;
+    }
+
+    /**
+     * There are essential differences in the implementation of some functions for different 
+     * types params, which should be prohibited.
+     * @param desc
+     * @param candicate
+     * @return
+     */
+    public static boolean isCastMatchAllowed(Function desc, Function candicate) {
+        final String functionName = desc.getFunctionName().getFunction();
+        final Type[] descArgTypes = desc.getArgs();
+        final Type[] candicateArgTypes = candicate.getArgs();
+        if (functionName.equalsIgnoreCase("hex") 
+                || functionName.equalsIgnoreCase("greast")
+                || functionName.equalsIgnoreCase("least")) {
+            final ScalarType descArgType = (ScalarType)descArgTypes[0];
+            final ScalarType candicateArgType = (ScalarType)candicateArgTypes[0];
+            if (!descArgType.isStringType() && candicateArgType.isStringType()) {
+                // The implementations of hex for string and int are different.
+                return false;
+            }
+        }
+        return true;
     }
 
     public Function getFunction(String signatureString) {

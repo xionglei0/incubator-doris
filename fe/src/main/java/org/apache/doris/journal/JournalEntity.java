@@ -32,6 +32,7 @@ import org.apache.doris.cluster.BaseParam;
 import org.apache.doris.cluster.Cluster;
 import org.apache.doris.common.io.Text;
 import org.apache.doris.common.io.Writable;
+import org.apache.doris.common.util.SmallFileMgr.SmallFile;
 import org.apache.doris.ha.MasterInfo;
 import org.apache.doris.journal.bdbje.Timestamp;
 import org.apache.doris.load.AsyncDeleteJob;
@@ -385,7 +386,7 @@ public class JournalEntity implements Writable {
             case OperationType.OP_COLOCATE_ADD_TABLE:
             case OperationType.OP_COLOCATE_REMOVE_TABLE:
             case OperationType.OP_COLOCATE_BACKENDS_PER_BUCKETSEQ:
-            case OperationType.OP_COLOCATE_MARK_BALANCING:
+            case OperationType.OP_COLOCATE_MARK_UNSTABLE:
             case OperationType.OP_COLOCATE_MARK_STABLE: {
                 data = new ColocatePersistInfo();
                 break;
@@ -432,6 +433,12 @@ public class JournalEntity implements Writable {
             }
             case OperationType.OP_END_LOAD_JOB: {
                 data = LoadJobFinalOperation.read(in);
+                needRead = false;
+                break;
+            }
+            case OperationType.OP_CREATE_SMALL_FILE:
+            case OperationType.OP_DROP_SMALL_FILE: {
+                data = SmallFile.read(in);
                 needRead = false;
                 break;
             }

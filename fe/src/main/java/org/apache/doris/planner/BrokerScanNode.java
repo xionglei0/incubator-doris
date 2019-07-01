@@ -111,6 +111,7 @@ public class BrokerScanNode extends ScanNode {
     private Table targetTable;
     private BrokerDesc brokerDesc;
     private List<BrokerFileGroup> fileGroups;
+    private boolean strictMode;
 
     private List<List<TBrokerFileStatus>> fileStatusesList;
     // file num
@@ -179,12 +180,23 @@ public class BrokerScanNode extends ScanNode {
         return desc.getTable() == null;
     }
 
+    @Deprecated
     public void setLoadInfo(Table targetTable,
                             BrokerDesc brokerDesc,
                             List<BrokerFileGroup> fileGroups) {
         this.targetTable = targetTable;
         this.brokerDesc = brokerDesc;
         this.fileGroups = fileGroups;
+    }
+
+    public void setLoadInfo(Table targetTable,
+                            BrokerDesc brokerDesc,
+                            List<BrokerFileGroup> fileGroups,
+                            boolean strictMode) {
+        this.targetTable = targetTable;
+        this.brokerDesc = brokerDesc;
+        this.fileGroups = fileGroups;
+        this.strictMode = strictMode;
     }
 
     private void createPartitionInfos() throws AnalysisException {
@@ -313,6 +325,7 @@ public class BrokerScanNode extends ScanNode {
         BrokerFileGroup fileGroup = context.fileGroup;
         params.setColumn_separator(fileGroup.getValueSeparator().getBytes(Charset.forName("UTF-8"))[0]);
         params.setLine_delimiter(fileGroup.getLineDelimiter().getBytes(Charset.forName("UTF-8"))[0]);
+        params.setStrict_mode(strictMode);
 
         // Parse partition information
         List<Long> partitionIds = fileGroup.getPartitionIds();
@@ -367,6 +380,7 @@ public class BrokerScanNode extends ScanNode {
     private void finalizeParams(ParamCreateContext context) throws UserException, AnalysisException {
         Map<String, SlotDescriptor> slotDescByName = context.slotDescByName;
         Map<String, Expr> exprMap = context.exprMap;
+        Map<Integer, Integer> destSidToSrcSidWithoutTrans = Maps.newHashMap();
         // Analyze expr map
         if (exprMap != null) {
             for (Map.Entry<String, Expr> entry : exprMap.entrySet()) {
@@ -402,6 +416,7 @@ public class BrokerScanNode extends ScanNode {
             if (expr == null) {
                 SlotDescriptor srcSlotDesc = slotDescByName.get(destSlotDesc.getColumn().getName());
                 if (srcSlotDesc != null) {
+                    destSidToSrcSidWithoutTrans.put(destSlotDesc.getId().asInt(), srcSlotDesc.getId().asInt());
                     // If dest is allow null, we set source to nullable
                     if (destSlotDesc.getColumn().isAllowNull()) {
                         srcSlotDesc.setIsNullable(true);
@@ -416,7 +431,7 @@ public class BrokerScanNode extends ScanNode {
                             expr = NullLiteral.create(column.getType());
                         } else {
                             throw new UserException("Unknown slot ref("
-                                    + destSlotDesc.getColumn().getName() + ") in source file");
+                                                            + destSlotDesc.getColumn().getName() + ") in source file");
                         }
                     }
                 }
@@ -429,7 +444,9 @@ public class BrokerScanNode extends ScanNode {
             expr = castToSlot(destSlotDesc, expr);
             context.params.putToExpr_of_dest_slot(destSlotDesc.getId().asInt(), expr.treeToThrift());
         }
+        context.params.setDest_sid_to_src_sid_without_trans(destSidToSrcSidWithoutTrans);
         context.params.setDest_tuple_id(desc.getId().asInt());
+        context.params.setStrict_mode(strictMode);
         // Need re compute memory layout after set some slot descriptor to nullable
         context.tupleDescriptor.computeMemLayout();
     }

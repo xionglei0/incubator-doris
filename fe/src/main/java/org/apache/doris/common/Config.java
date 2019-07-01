@@ -87,7 +87,13 @@ public class Config extends ConfigBase {
      * (Because all load jobs' info is kept in memory before being removed)
      */
     @ConfField(mutable = true, masterOnly = true)
-    public static int label_keep_max_second = 7 * 24 * 3600; // 7 days
+    public static int label_keep_max_second = 3 * 24 * 3600; // 3 days
+    /*
+     * The max keep time of some kind of jobs.
+     * like schema change job and rollup job.
+     */
+    @ConfField(mutable = true, masterOnly = true)
+    public static int history_job_keep_max_second = 7 * 24 * 3600; // 7 days
     /*
      * Load label cleaner will run every *label_clean_interval_second* to clean the outdated jobs.
      */
@@ -244,10 +250,10 @@ public class Config extends ConfigBase {
     public static int tablet_create_timeout_second = 1;
     
     /*
-     * Maximal waiting time for publish version message to backend
+     * Maximal waiting time for all publish version tasks of one transaction to be finished
      */
     @ConfField(mutable = true, masterOnly = true)
-    public static int publish_version_timeout_second = 3;
+    public static int publish_version_timeout_second = 30; // 30 seconds
     
     /*
      * minimal intervals between two publish version action
@@ -379,6 +385,14 @@ public class Config extends ConfigBase {
     public static int hadoop_load_default_timeout_second = 86400 * 3; // 3 day
 
     /*
+     * Default number of waiting jobs for routine load and version 2 of load
+     * This is a desired number.
+     * In some situation, such as switch the master, the current number is maybe more then desired_max_waiting_jobs
+     */
+    @ConfField(mutable = true, masterOnly = true)
+    public static int desired_max_waiting_jobs = 100;
+
+    /*
      * Same meaning as *tablet_create_timeout_second*, but used when delete a tablet.
      */
     @ConfField(mutable = true, masterOnly = true)
@@ -489,35 +503,22 @@ public class Config extends ConfigBase {
      */
     @ConfField public static int export_checker_interval_second = 5;
     /*
-     * Concurrency of pending export jobs.
-     */
-    @ConfField public static int export_pending_thread_num = 5;
-    /*
-     * Num of thread to handle export jobs.
-     */
-    @ConfField public static int export_exporting_thread_num = 10;
-    /*
      * Limitation of the concurrency of running export jobs.
-     * Default is no limit.
+     * Default is 5.
+     * 0 is unlimited
      */
     @ConfField(mutable = true, masterOnly = true)
-    public static int export_running_job_num_limit = 0; // 0 is no limit
+    public static int export_running_job_num_limit = 5;
     /*
      * Default timeout of export jobs.
      */
     @ConfField(mutable = true, masterOnly = true)
-    public static int export_task_default_timeout_second = 24 * 3600; // 24h
+    public static int export_task_default_timeout_second = 2 * 3600; // 2h
     /*
-     * Concurrency of exporting tablets.
+     * Number of tablets per export query plan
      */
     @ConfField(mutable = true, masterOnly = true)
-    public static int export_parallel_tablet_num = 5;
-    /*
-     * Labels of finished or cancelled export jobs will be removed after *label_keep_max_second*.
-     * The removed labels can be reused.
-     */
-    @ConfField(mutable = true, masterOnly = true)
-    public static int export_keep_max_second = 3 * 24 * 3600; // 3 days
+    public static int export_tablet_num_per_task = 5;
 
     // Configurations for consistency check
     /*
@@ -798,5 +799,30 @@ public class Config extends ConfigBase {
      */
     @ConfField(mutable = true, masterOnly = true)
     public static int max_routine_load_task_concurrent_num = 5;
+
+    /*
+     * The max number of files store in SmallFileMgr 
+     */
+    @ConfField(mutable = true, masterOnly = true)
+    public static int max_small_file_number = 100;
+
+    /*
+     * The max size of a single file store in SmallFileMgr 
+     */
+    @ConfField(mutable = true, masterOnly = true)
+    public static int max_small_file_size_bytes = 1024 * 1024; // 1MB
+
+    /*
+     * Save small files
+     */
+    @ConfField public static String small_file_dir = System.getenv("DORIS_HOME") + "/small_files";
+    
+    /*
+     * The following 2 configs can set to true to disable the automatic colocate tables's relocate and balance.
+     * if 'disable_colocate_relocate' is set to true, ColocateTableBalancer will not relocate colocate tables when Backend unavailable.
+     * if 'disable_colocate_balance' is set to true, ColocateTableBalancer will not balance colocate tables.
+     */
+    @ConfField(mutable = true, masterOnly = true) public static boolean disable_colocate_relocate = false;
+    @ConfField(mutable = true, masterOnly = true) public static boolean disable_colocate_balance = false;
 }
 

@@ -159,6 +159,7 @@ enum OLAPStatus {
     OLAP_ERR_INVALID_CLUSTER_INFO = -225,
     OLAP_ERR_TRANSACTION_NOT_EXIST = -226,
     OLAP_ERR_DISK_FAILURE = -227,
+    OLAP_ERR_LZO_DISABLED = -228,
 
     // CommandExecutor
     // [-300, -400)
@@ -331,6 +332,7 @@ enum OLAPStatus {
     OLAP_ERR_META_PUT = -3004,
     OLAP_ERR_META_ITERATOR = -3005,
     OLAP_ERR_META_DELETE = -3006,
+    OLAP_ERR_META_ALREADY_EXIST  = -3007,
 };
 
 enum ColumnFamilyIndex {

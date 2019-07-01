@@ -51,6 +51,7 @@ BrokerScanner::BrokerScanner(RuntimeState* state,
         // _splittable(params.splittable),
         _value_separator(static_cast<char>(params.column_separator)),
         _line_delimiter(static_cast<char>(params.line_delimiter)),
+        _strict_mode(false),
         _cur_file_reader(nullptr),
         _cur_line_reader(nullptr),
         _cur_decompressor(nullptr),
@@ -85,7 +86,7 @@ Status BrokerScanner::init_expr_ctxes() {
     if (src_tuple_desc == nullptr) {
         std::stringstream ss;
         ss << "Unknown source tuple descriptor, tuple_id=" << _params.src_tuple_id;
-        return Status(ss.str());
+        return Status::InternalError(ss.str());
     }
 
     std::map<SlotId, SlotDescriptor*> src_slot_desc_map;
@@ -97,7 +98,7 @@ Status BrokerScanner::init_expr_ctxes() {
         if (it == std::end(src_slot_desc_map)) {
             std::stringstream ss;
             ss << "Unknown source slot descriptor, slot_id=" << slot_id;
-            return Status(ss.str());
+            return Status::InternalError(ss.str());
         }
         _src_slot_descs.emplace_back(it->second);
     }
@@ -114,9 +115,10 @@ Status BrokerScanner::init_expr_ctxes() {
     if (_dest_tuple_desc == nullptr) {
         std::stringstream ss;
         ss << "Unknown dest tuple descriptor, tuple_id=" << _params.dest_tuple_id;
-        return Status(ss.str());
+        return Status::InternalError(ss.str());
     }
 
+    bool has_slot_id_map = _params.__isset.dest_sid_to_src_sid_without_trans;
     for (auto slot_desc : _dest_tuple_desc->slots()) {
         if (!slot_desc->is_materialized()) {
             continue;
@@ -126,30 +128,50 @@ Status BrokerScanner::init_expr_ctxes() {
             std::stringstream ss;
             ss << "No expr for dest slot, id=" << slot_desc->id() 
                 << ", name=" << slot_desc->col_name();
-            return Status(ss.str());
+            return Status::InternalError(ss.str());
         }
         ExprContext* ctx = nullptr;
         RETURN_IF_ERROR(Expr::create_expr_tree(_state->obj_pool(), it->second, &ctx));
         RETURN_IF_ERROR(ctx->prepare(_state, *_row_desc.get(), _mem_tracker.get()));
         RETURN_IF_ERROR(ctx->open(_state));
         _dest_expr_ctx.emplace_back(ctx);
+        if (has_slot_id_map) {
+            auto it = _params.dest_sid_to_src_sid_without_trans.find(slot_desc->id());
+            if (it == std::end(_params.dest_sid_to_src_sid_without_trans)) {
+                _src_slot_descs_order_by_dest.emplace_back(nullptr);
+            } else {
+                auto _src_slot_it = src_slot_desc_map.find(it->second);
+                if (_src_slot_it == std::end(src_slot_desc_map)) {
+                     std::stringstream ss;
+                     ss << "No src slot " << it->second << " in src slot descs";
+                     return Status::InternalError(ss.str());
+                }
+                _src_slot_descs_order_by_dest.emplace_back(_src_slot_it->second);
+            }
+        }
     }
 
-    return Status::OK;
+    return Status::OK();
 }
 
 Status BrokerScanner::open() {
     RETURN_IF_ERROR(init_expr_ctxes());
     _text_converter.reset(new(std::nothrow) TextConverter('\\'));
     if (_text_converter == nullptr) {
-        return Status("No memory error.");
+        return Status::InternalError("No memory error.");
     }
 
     _rows_read_counter = ADD_COUNTER(_profile, "RowsRead", TUnit::UNIT);
     _read_timer = ADD_TIMER(_profile, "TotalRawReadTime(*)");
     _materialize_timer = ADD_TIMER(_profile, "MaterializeTupleTime(*)");
+    if (_params.__isset.strict_mode) {
+        _strict_mode = _params.strict_mode;
+    }
+    if (_strict_mode && !_params.__isset.dest_sid_to_src_sid_without_trans) {
+        return Status::InternalError("Slot map of dest to src must be set in strict mode");
+    }
 
-    return Status::OK;
+    return Status::OK();
 }
 
 Status BrokerScanner::get_next(Tuple* tuple, MemPool* tuple_pool, bool* eof) {
@@ -189,20 +211,20 @@ Status BrokerScanner::get_next(Tuple* tuple, MemPool* tuple_pool, bool* eof) {
     } else {
         *eof = false;
     }
-    return Status::OK;
+    return Status::OK();
 }
 
 Status BrokerScanner::open_next_reader() {
     if (_next_range >= _ranges.size()) {
         _scanner_eof = true;
-        return Status::OK;
+        return Status::OK();
     }
 
     RETURN_IF_ERROR(open_file_reader());
     RETURN_IF_ERROR(open_line_reader());
     _next_range++;
     
-    return Status::OK;
+    return Status::OK();
 }
 
 Status BrokerScanner::open_file_reader() {
@@ -239,7 +261,7 @@ Status BrokerScanner::open_file_reader() {
         _stream_load_pipe = _state->exec_env()->load_stream_mgr()->get(range.load_id);
         if (_stream_load_pipe == nullptr) {
             VLOG(3) << "unknown stream load id: " << UniqueId(range.load_id);
-            return Status("unknown stream load id");
+            return Status::InternalError("unknown stream load id");
         }
         _cur_file_reader = _stream_load_pipe.get();
         break;
@@ -247,10 +269,10 @@ Status BrokerScanner::open_file_reader() {
     default: {
         std::stringstream ss;
         ss << "Unknown file type, type=" << range.file_type;
-        return Status(ss.str());
+        return Status::InternalError(ss.str());
     }
     }
-    return Status::OK;
+    return Status::OK();
 }
 
 Status BrokerScanner::create_decompressor(TFileFormatType::type type) {
@@ -279,13 +301,13 @@ Status BrokerScanner::create_decompressor(TFileFormatType::type type) {
     default: {
         std::stringstream ss;
         ss << "Unknown format type, type=" << type;
-        return Status(ss.str());
+        return Status::InternalError(ss.str());
     }
     }
     RETURN_IF_ERROR(Decompressor::create_decompressor(
             compress_type, &_cur_decompressor));
 
-    return Status::OK;
+    return Status::OK();
 }
 
 Status BrokerScanner::open_line_reader() {
@@ -305,7 +327,7 @@ Status BrokerScanner::open_line_reader() {
         if (range.format_type != TFileFormatType::FORMAT_CSV_PLAIN) {
             std::stringstream ss;
             ss << "For now we do not support split compressed file";
-            return Status(ss.str());
+            return Status::InternalError(ss.str());
         }
         size += 1;
         _skip_next_line = true;
@@ -332,13 +354,13 @@ Status BrokerScanner::open_line_reader() {
     default: {
         std::stringstream ss;
         ss << "Unknown format type, type=" << range.format_type;
-        return Status(ss.str());
+        return Status::InternalError(ss.str());
     }
     }
 
     _cur_line_reader_eof = false;
 
-    return Status::OK;
+    return Status::OK();
 }
 
 void BrokerScanner::close() {
@@ -585,24 +607,36 @@ bool BrokerScanner::fill_dest_tuple(const Slice& line, Tuple* dest_tuple, MemPoo
             continue;
         }
 
-        ExprContext* ctx = _dest_expr_ctx[ctx_idx++];
+        int dest_index = ctx_idx++;
+        ExprContext* ctx = _dest_expr_ctx[dest_index];
         void* value = ctx->get_value(_src_tuple_row);
         if (value == nullptr) {
-            if (slot_desc->is_nullable()) {
-                dest_tuple->set_null(slot_desc->null_indicator_offset());
-                continue;
-            } else {
+            if (_strict_mode && (_src_slot_descs_order_by_dest[dest_index] != nullptr) 
+                && !_src_tuple->is_null(_src_slot_descs_order_by_dest[dest_index]->null_indicator_offset())) {
                 std::stringstream error_msg;
-                error_msg << "column(" << slot_desc->col_name() << ") value is null";
+                error_msg << "column(" << slot_desc->col_name() << ") value is incorrect "
+                    << "while strict mode is " << std::boolalpha << _strict_mode;
                 _state->append_error_msg_to_file(
                     std::string(line.data, line.size), error_msg.str());
                 _counter->num_rows_filtered++;
                 return false;
             }
+            if (!slot_desc->is_nullable()) {
+                std::stringstream error_msg;
+                error_msg << "column(" << slot_desc->col_name() << ") value is null "
+                          << "while columns is not nullable";
+                _state->append_error_msg_to_file(
+                    std::string(line.data, line.size), error_msg.str());
+                _counter->num_rows_filtered++;
+                return false;
+            }
+            dest_tuple->set_null(slot_desc->null_indicator_offset());
+            continue;
         }
         dest_tuple->set_not_null(slot_desc->null_indicator_offset());
         void* slot = dest_tuple->get_slot(slot_desc->tuple_offset());
         RawValue::write(value, slot, slot_desc->type(), mem_pool);
+        continue;
     }
     return true;
 }

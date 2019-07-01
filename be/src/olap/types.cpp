@@ -31,7 +31,9 @@ TypeInfo::TypeInfo(TypeTraitsClass t)
         _set_to_min(TypeTraitsClass::set_to_min),
         _is_min(TypeTraitsClass::is_min),
         _hash_code(TypeTraitsClass::hash_code),
-        _size(TypeTraitsClass::size) {}
+        _size(TypeTraitsClass::size),
+        _field_type(TypeTraitsClass::type) {
+}
 
 class TypeInfoResolver {
     DECLARE_SINGLETON(TypeInfoResolver);
@@ -60,6 +62,8 @@ TypeInfoResolver::TypeInfoResolver() {
     add_mapping<OLAP_FIELD_TYPE_TINYINT>();
     add_mapping<OLAP_FIELD_TYPE_SMALLINT>();
     add_mapping<OLAP_FIELD_TYPE_INT>();
+    add_mapping<OLAP_FIELD_TYPE_UNSIGNED_INT>();
+    add_mapping<OLAP_FIELD_TYPE_BOOL>();
     add_mapping<OLAP_FIELD_TYPE_BIGINT>();
     add_mapping<OLAP_FIELD_TYPE_LARGEINT>();
     add_mapping<OLAP_FIELD_TYPE_FLOAT>();

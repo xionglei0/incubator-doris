@@ -90,7 +90,7 @@ fi
 
 cd ${DORIS_HOME}/be/build/
 
-cmake ../ -DMAKE_TEST=ON
+cmake ../ -DWITH_MYSQL=OFF -DMAKE_TEST=ON
 make -j${PARALLEL}
 
 if [ ${RUN} -ne 1 ]; then
@@ -134,6 +134,7 @@ cp -r ${DORIS_HOME}/be/test/util/test_data ${DORIS_TEST_BINARY_DIR}/util/
 
 # Running Util Unittest
 ${DORIS_TEST_BINARY_DIR}/util/bit_util_test
+${DORIS_TEST_BINARY_DIR}/util/bitmap_test
 ${DORIS_TEST_BINARY_DIR}/util/path_trie_test
 ${DORIS_TEST_BINARY_DIR}/util/count_down_latch_test
 ${DORIS_TEST_BINARY_DIR}/util/lru_cache_util_test
@@ -151,6 +152,8 @@ ${DORIS_TEST_BINARY_DIR}/util/byte_buffer_test2
 ${DORIS_TEST_BINARY_DIR}/util/uid_util_test
 ${DORIS_TEST_BINARY_DIR}/util/aes_util_test
 ${DORIS_TEST_BINARY_DIR}/util/string_util_test
+${DORIS_TEST_BINARY_DIR}/util/coding_test
+${DORIS_TEST_BINARY_DIR}/util/faststring_test
 
 ## Running common Unittest
 ${DORIS_TEST_BINARY_DIR}/common/resource_tls_test
@@ -158,6 +161,7 @@ ${DORIS_TEST_BINARY_DIR}/common/resource_tls_test
 ## Running exprs unit test
 ${DORIS_TEST_BINARY_DIR}/exprs/string_functions_test
 ${DORIS_TEST_BINARY_DIR}/exprs/json_function_test
+${DORIS_TEST_BINARY_DIR}/exprs/timestamp_functions_test
 
 ## Running geo unit test
 ${DORIS_TEST_BINARY_DIR}/geo/geo_functions_test
@@ -169,7 +173,9 @@ ${DORIS_TEST_BINARY_DIR}/exec/plain_text_line_reader_uncompressed_test
 ${DORIS_TEST_BINARY_DIR}/exec/plain_text_line_reader_gzip_test
 ${DORIS_TEST_BINARY_DIR}/exec/plain_text_line_reader_bzip_test
 ${DORIS_TEST_BINARY_DIR}/exec/plain_text_line_reader_lz4frame_test
-${DORIS_TEST_BINARY_DIR}/exec/plain_text_line_reader_lzop_test
+if [ -f ${DORIS_TEST_BINARY_DIR}/exec/plain_text_line_reader_lzop_test ];then
+    ${DORIS_TEST_BINARY_DIR}/exec/plain_text_line_reader_lzop_test
+fi
 ${DORIS_TEST_BINARY_DIR}/exec/broker_scanner_test
 ${DORIS_TEST_BINARY_DIR}/exec/broker_scan_node_test
 ${DORIS_TEST_BINARY_DIR}/exec/es_scan_node_test
@@ -192,7 +198,8 @@ ${DORIS_TEST_BINARY_DIR}/runtime/stream_load_pipe_test
 ${DORIS_TEST_BINARY_DIR}/runtime/tablet_writer_mgr_test
 ${DORIS_TEST_BINARY_DIR}/runtime/snapshot_loader_test
 ${DORIS_TEST_BINARY_DIR}/runtime/user_function_cache_test
-## Running expr Unittest
+${DORIS_TEST_BINARY_DIR}/runtime/small_file_mgr_test
+# Running expr Unittest
 
 # Running http
 ${DORIS_TEST_BINARY_DIR}/http/metrics_action_test
@@ -224,12 +231,19 @@ ${DORIS_TEST_BINARY_DIR}/olap/olap_header_manager_test
 ${DORIS_TEST_BINARY_DIR}/olap/olap_meta_test
 ${DORIS_TEST_BINARY_DIR}/olap/delta_writer_test
 ${DORIS_TEST_BINARY_DIR}/olap/field_info_test
+${DORIS_TEST_BINARY_DIR}/olap/rowset/segment_v2/encoding_info_test
+${DORIS_TEST_BINARY_DIR}/olap/rowset/segment_v2/ordinal_page_index_test
+${DORIS_TEST_BINARY_DIR}/olap/rowset/segment_v2/bitshuffle_page_test
+${DORIS_TEST_BINARY_DIR}/olap/rowset/segment_v2/plain_page_test
+${DORIS_TEST_BINARY_DIR}/olap/rowset/segment_v2/binary_plain_page_test
+${DORIS_TEST_BINARY_DIR}/olap/rowset/segment_v2/column_reader_writer_test
+${DORIS_TEST_BINARY_DIR}/olap/rowset/segment_v2/rle_page_test
 
 # Running routine load test
 ${DORIS_TEST_BINARY_DIR}/runtime/kafka_consumer_pipe_test
 ${DORIS_TEST_BINARY_DIR}/runtime/routine_load_task_executor_test
 
-## Running agent unittest
+# Running agent unittest
 # Prepare agent testdata
 if [ -d ${DORIS_TEST_BINARY_DIR}/agent/test_data ]; then
     rm -rf ${DORIS_TEST_BINARY_DIR}/agent/test_data

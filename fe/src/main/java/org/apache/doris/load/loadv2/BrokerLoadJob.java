@@ -1,22 +1,19 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one
- * or more contributor license agreements.  See the NOTICE file
- * distributed with this work for additional information
- * regarding copyright ownership.  The ASF licenses this file
- * to you under the Apache License, Version 2.0 (the
- * "License"); you may not use this file except in compliance
- * with the License.  You may obtain a copy of the License at
- *
- *   http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
- * KIND, either express or implied.  See the License for the
- * specific language governing permissions and limitations
- * under the License.
- *
- */
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 package org.apache.doris.load.loadv2;
 
@@ -27,8 +24,11 @@ import org.apache.doris.analysis.LoadStmt;
 import org.apache.doris.catalog.Catalog;
 import org.apache.doris.catalog.Database;
 import org.apache.doris.catalog.OlapTable;
+import org.apache.doris.catalog.Table;
+import org.apache.doris.common.AnalysisException;
 import org.apache.doris.common.Config;
 import org.apache.doris.common.DdlException;
+import org.apache.doris.common.LabelAlreadyUsedException;
 import org.apache.doris.common.MetaNotFoundException;
 import org.apache.doris.common.UserException;
 import org.apache.doris.common.util.LogBuilder;
@@ -37,6 +37,9 @@ import org.apache.doris.load.BrokerFileGroup;
 import org.apache.doris.load.EtlJobType;
 import org.apache.doris.load.FailMsg;
 import org.apache.doris.load.PullLoadSourceInfo;
+import org.apache.doris.service.FrontendOptions;
+import org.apache.doris.transaction.BeginTransactionException;
+import org.apache.doris.transaction.TransactionState;
 
 import com.google.common.base.Joiner;
 import com.google.common.collect.Lists;
@@ -110,16 +113,37 @@ public class BrokerLoadJob extends LoadJob {
     }
 
     @Override
-    protected Set<String> getTableNames() {
+    protected Set<String> getTableNames() throws MetaNotFoundException {
         Set<String> result = Sets.newHashSet();
-        for (DataDescription dataDescription : dataDescriptions) {
-            result.add(dataDescription.getTableName());
+        Database database = Catalog.getCurrentCatalog().getDb(dbId);
+        if (database == null) {
+            throw new MetaNotFoundException("Database " + dbId + "has been deleted");
+        }
+        database.readLock();
+        try {
+            for (long tableId : dataSourceInfo.getIdToFileGroups().keySet()) {
+                Table table = database.getTable(tableId);
+                if (table == null) {
+                    throw new MetaNotFoundException("Failed to find table " + tableId + " in db " + dbId);
+                }
+                result.add(table.getName());
+            }
+        } finally {
+            database.readUnlock();
         }
         return result;
     }
 
     @Override
-    public void executeJob() {
+    public void beginTxn() throws LabelAlreadyUsedException, BeginTransactionException, AnalysisException {
+        transactionId = Catalog.getCurrentGlobalTransactionMgr()
+                .beginTransaction(dbId, label, -1, "FE: " + FrontendOptions.getLocalHostAddress(),
+                                  TransactionState.LoadJobSourceType.BATCH_LOAD_JOB, id,
+                                  timeoutSecond);
+    }
+
+    @Override
+    protected void executeJob() {
         LoadTask task = new BrokerLoadPendingTask(this, dataSourceInfo.getIdToFileGroups(), brokerDesc);
         idToTasks.put(task.getSignature(), task);
         Catalog.getCurrentCatalog().getLoadTaskScheduler().submit(task);
@@ -163,7 +187,7 @@ public class BrokerLoadJob extends LoadJob {
             } else {
                 // retry task
                 idToTasks.remove(loadTask.getSignature());
-                loadTask.resetSignature();
+                loadTask.updateRetryInfo();
                 idToTasks.put(loadTask.getSignature(), loadTask);
                 Catalog.getCurrentCatalog().getLoadTaskScheduler().submit(loadTask);
                 return;
@@ -215,7 +239,7 @@ public class BrokerLoadJob extends LoadJob {
                              .add("database_id", dbId)
                              .add("error_msg", "Failed to divide job into loading task.")
                              .build(), e);
-            cancelJobWithoutCheck(new FailMsg(FailMsg.CancelType.ETL_RUN_FAIL, e.getMessage()));
+            cancelJobWithoutCheck(new FailMsg(FailMsg.CancelType.ETL_RUN_FAIL, e.getMessage()), true);
             return;
         }
 
@@ -243,7 +267,7 @@ public class BrokerLoadJob extends LoadJob {
                 // Generate loading task and init the plan of task
                 LoadLoadingTask task = new LoadLoadingTask(db, table, brokerDesc,
                                                            entry.getValue(), getDeadlineMs(), execMemLimit,
-                                                           transactionId, this);
+                                                           strictMode, transactionId, this);
                 task.init(attachment.getFileStatusByTable(tableId),
                           attachment.getFileNumByTable(tableId));
                 // Add tasks into list and pool
@@ -295,7 +319,7 @@ public class BrokerLoadJob extends LoadJob {
 
         // check data quality
         if (!checkDataQuality()) {
-            cancelJobWithoutCheck(new FailMsg(FailMsg.CancelType.ETL_QUALITY_UNSATISFIED, QUALITY_FAIL_MSG));
+            cancelJobWithoutCheck(new FailMsg(FailMsg.CancelType.ETL_QUALITY_UNSATISFIED, QUALITY_FAIL_MSG),true);
             return;
         }
         Database db = null;
@@ -306,7 +330,7 @@ public class BrokerLoadJob extends LoadJob {
                              .add("database_id", dbId)
                              .add("error_msg", "db has been deleted when job is loading")
                              .build(), e);
-            cancelJobWithoutCheck(new FailMsg(FailMsg.CancelType.LOAD_RUN_FAIL, e.getMessage()));
+            cancelJobWithoutCheck(new FailMsg(FailMsg.CancelType.LOAD_RUN_FAIL, e.getMessage()), true);
         }
         db.writeLock();
         try {
@@ -319,7 +343,7 @@ public class BrokerLoadJob extends LoadJob {
                              .add("database_id", dbId)
                              .add("error_msg", "Failed to commit txn.")
                              .build(), e);
-            cancelJobWithoutCheck(new FailMsg(FailMsg.CancelType.LOAD_RUN_FAIL, e.getMessage()));
+            cancelJobWithoutCheck(new FailMsg(FailMsg.CancelType.LOAD_RUN_FAIL, e.getMessage()),true);
             return;
         } finally {
             db.writeUnlock();
@@ -335,7 +359,7 @@ public class BrokerLoadJob extends LoadJob {
             loadingStatus.setTrackingUrl(attachment.getTrackingUrl());
         }
         commitInfos.addAll(attachment.getCommitInfoList());
-        progress = finishedTaskIds.size() / idToTasks.size() * 100;
+        progress = (int) ((double) finishedTaskIds.size() / idToTasks.size() * 100);
         if (progress == 100) {
             progress = 99;
         }
@@ -350,6 +374,16 @@ public class BrokerLoadJob extends LoadJob {
             value += Long.valueOf(deltaValue);
         }
         return String.valueOf(value);
+    }
+
+    @Override
+    protected void executeReplayOnAborted(TransactionState txnState) {
+        unprotectReadEndOperation((LoadJobFinalOperation) txnState.getTxnCommitAttachment());
+    }
+
+    @Override
+    protected void executeReplayOnVisible(TransactionState txnState) {
+        unprotectReadEndOperation((LoadJobFinalOperation) txnState.getTxnCommitAttachment());
     }
 
     @Override

@@ -37,6 +37,7 @@ import org.apache.doris.common.Config;
 import org.apache.doris.common.FeConstants;
 import org.apache.doris.common.io.Text;
 import org.apache.doris.common.io.Writable;
+import org.apache.doris.common.util.SmallFileMgr.SmallFile;
 import org.apache.doris.ha.MasterInfo;
 import org.apache.doris.journal.Journal;
 import org.apache.doris.journal.JournalCursor;
@@ -630,9 +631,9 @@ public class EditLog {
                     catalog.getColocateTableIndex().replayAddBackendsPerBucketSeq(info);
                     break;
                 }
-                case OperationType.OP_COLOCATE_MARK_BALANCING: {
+                case OperationType.OP_COLOCATE_MARK_UNSTABLE: {
                     final ColocatePersistInfo info = (ColocatePersistInfo) journal.getData();
-                    catalog.getColocateTableIndex().replayMarkGroupBalancing(info);
+                    catalog.getColocateTableIndex().replayMarkGroupUnstable(info);
                     break;
                 }
                 case OperationType.OP_COLOCATE_MARK_STABLE: {
@@ -689,6 +690,16 @@ public class EditLog {
                 case OperationType.OP_END_LOAD_JOB: {
                     LoadJobFinalOperation operation = (LoadJobFinalOperation) journal.getData();
                     Catalog.getCurrentCatalog().getLoadManager().replayEndLoadJob(operation);
+                    break;
+                }
+                case OperationType.OP_CREATE_SMALL_FILE: {
+                    SmallFile smallFile = (SmallFile) journal.getData();
+                    Catalog.getCurrentCatalog().getSmallFileMgr().replayCreateFile(smallFile);
+                    break;
+                }
+                case OperationType.OP_DROP_SMALL_FILE: {
+                    SmallFile smallFile = (SmallFile) journal.getData();
+                    Catalog.getCurrentCatalog().getSmallFileMgr().replayRemoveFile(smallFile);
                     break;
                 }
                 default: {
@@ -1154,8 +1165,8 @@ public class EditLog {
         logEdit(OperationType.OP_COLOCATE_BACKENDS_PER_BUCKETSEQ, info);
     }
 
-    public void logColocateMarkBalancing(ColocatePersistInfo info) {
-        logEdit(OperationType.OP_COLOCATE_MARK_BALANCING, info);
+    public void logColocateMarkUnstable(ColocatePersistInfo info) {
+        logEdit(OperationType.OP_COLOCATE_MARK_UNSTABLE, info);
     }
 
     public void logColocateMarkStable(ColocatePersistInfo info) {
@@ -1200,5 +1211,13 @@ public class EditLog {
 
     public void logEndLoadJob(LoadJobFinalOperation loadJobFinalOperation) {
         logEdit(OperationType.OP_END_LOAD_JOB, loadJobFinalOperation);
+    }
+
+    public void logCreateSmallFile(SmallFile info) {
+        logEdit(OperationType.OP_CREATE_SMALL_FILE, info);
+    }
+
+    public void logDropSmallFile(SmallFile info) {
+        logEdit(OperationType.OP_DROP_SMALL_FILE, info);
     }
 }

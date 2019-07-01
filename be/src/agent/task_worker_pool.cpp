@@ -902,6 +902,7 @@ void* TaskWorkerPool::_publish_version_worker_thread_callback(void* arg_this) {
             finish_task_request.__set_error_tablet_ids(error_tablet_ids);
             DorisMetrics::publish_task_failed_total.increment(1);
         } else {
+            _s_report_version++;
             LOG(INFO) << "publish_version success. signature:" << agent_task_req.signature;
         }
 
@@ -912,6 +913,7 @@ void* TaskWorkerPool::_publish_version_worker_thread_callback(void* arg_this) {
         finish_task_request.__set_backend(worker_pool_this->_backend);
         finish_task_request.__set_task_type(agent_task_req.task_type);
         finish_task_request.__set_signature(agent_task_req.signature);
+        finish_task_request.__set_report_version(_s_report_version);
 
         worker_pool_this->_finish_task(finish_task_request);
         worker_pool_this->_remove_task_info(agent_task_req.task_type, agent_task_req.signature, "");
@@ -1402,7 +1404,7 @@ AgentStatus TaskWorkerPool::_clone_copy(
             RETURN_IF_ERROR(client->init(remote_file_path));
             client->set_timeout_ms(LIST_REMOTE_FILE_TIMEOUT * 1000);
             RETURN_IF_ERROR(client->execute(&file_list_str));
-            return Status::OK;
+            return Status::OK();
         };
 
         Status download_status = HttpClient::execute_with_retry(
@@ -1464,7 +1466,7 @@ AgentStatus TaskWorkerPool::_clone_copy(
                 client->set_timeout_ms(GET_LENGTH_TIMEOUT * 1000);
                 RETURN_IF_ERROR(client->head());
                 file_size = client->get_content_length();
-                return Status::OK;
+                return Status::OK();
             };
             download_status = HttpClient::execute_with_retry(
                 DOWNLOAD_FILE_MAX_RETRY, 1, get_file_size_cb);
@@ -1499,10 +1501,10 @@ AgentStatus TaskWorkerPool::_clone_copy(
                         << ", remote_path=" << remote_file_path
                         << ", file_size=" << file_size
                         << ", local_file_size=" << local_file_size;
-                    return Status("downloaded file size is not equal");
+                    return Status::InternalError("downloaded file size is not equal");
                 }
                 chmod(local_file_path.c_str(), S_IRUSR | S_IWUSR);
-                return Status::OK;
+                return Status::OK();
             };
             download_status = HttpClient::execute_with_retry(
                 DOWNLOAD_FILE_MAX_RETRY, 1, download_cb);

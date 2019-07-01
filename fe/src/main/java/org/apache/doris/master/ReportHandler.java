@@ -254,7 +254,8 @@ public class ReportHandler extends Daemon {
         // storage medium -> tablet id
         ListMultimap<TStorageMedium, Long> tabletMigrationMap = LinkedListMultimap.create();
         
-        ListMultimap<Long, TPartitionVersionInfo> transactionsToPublish = LinkedListMultimap.create();
+        // dbid -> txn id -> [partition info]
+        Map<Long, ListMultimap<Long, TPartitionVersionInfo>> transactionsToPublish = Maps.newHashMap();
         ListMultimap<Long, Long> transactionsToClear = LinkedListMultimap.create();
         
         // db id -> tablet id
@@ -627,7 +628,8 @@ public class ReportHandler extends Daemon {
             TTablet backendTablet = backendTablets.get(tabletId);
             for (TTabletInfo backendTabletInfo : backendTablet.getTablet_infos()) {
                 boolean needDelete = false;
-                if (!foundTabletsWithValidSchema.contains(tabletId)) {
+                if (!foundTabletsWithValidSchema.contains(tabletId)
+                        && isBackendReplicaHealthy(backendTabletInfo)) {
                     // if this tablet is not in meta. try adding it.
                     // if add failed. delete this tablet from backend.
                     try {
@@ -669,6 +671,17 @@ public class ReportHandler extends Daemon {
         LOG.info("add {} replica(s) to meta. backend[{}]", addToMetaCounter, backendId);
     }
 
+    // replica is used and no version missing
+    private static boolean isBackendReplicaHealthy(TTabletInfo backendTabletInfo) {
+        if (backendTabletInfo.isSetUsed() && !backendTabletInfo.isUsed()) {
+            return false;
+        }
+        if (backendTabletInfo.isSetVersion_miss() && backendTabletInfo.isVersion_miss()) {
+            return false;
+        }
+        return true;
+    }
+
     private static void handleMigration(ListMultimap<TStorageMedium, Long> tabletMetaMigrationMap,
                                         long backendId) {
         TabletInvertedIndex invertedIndex = Catalog.getCurrentInvertedIndex();
@@ -685,16 +698,18 @@ public class ReportHandler extends Daemon {
 
         AgentTaskExecutor.submit(batchTask);
     }
-    private static void handleRepublishVersionInfo(ListMultimap<Long, TPartitionVersionInfo> transactionsToPublish, 
+
+    private static void handleRepublishVersionInfo(Map<Long, ListMultimap<Long, TPartitionVersionInfo>> transactionsToPublish, 
             long backendId) {
         AgentBatchTask batchTask = new AgentBatchTask();
-        for (Long transactionId : transactionsToPublish.keySet()) {
-            PublishVersionTask task = new PublishVersionTask(backendId, 
-                                                            transactionId, 
-                                                            transactionsToPublish.get(transactionId));
-            batchTask.addTask(task);
-            // add to AgentTaskQueue for handling finish report.
-            AgentTaskQueue.addTask(task);
+        for (Long dbId : transactionsToPublish.keySet()) {
+            ListMultimap<Long, TPartitionVersionInfo> map = transactionsToPublish.get(dbId);
+            for (long txnId : map.keySet()) {
+                PublishVersionTask task = new PublishVersionTask(backendId, txnId, dbId, map.get(txnId));
+                batchTask.addTask(task);
+                // add to AgentTaskQueue for handling finish report.
+                AgentTaskQueue.addTask(task);
+            }
         }
         AgentTaskExecutor.submit(batchTask);
     }
@@ -928,9 +943,10 @@ public class ReportHandler extends Daemon {
                 return;
             }
 
+            int availableBackendsNum = infoService.getClusterBackendIds(db.getClusterName(), true).size();
             Pair<TabletStatus, TabletSchedCtx.Priority> status = tablet.getHealthStatusWithPriority(infoService,
                     db.getClusterName(), visibleVersion, visibleVersionHash,
-                    replicationNum);
+                    replicationNum, availableBackendsNum);
             
             if (status.first == TabletStatus.VERSION_INCOMPLETE || status.first == TabletStatus.REPLICA_MISSING) {
                 long lastFailedVersion = -1L;

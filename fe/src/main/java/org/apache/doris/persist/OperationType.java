@@ -139,7 +139,7 @@ public class OperationType {
     public static final short OP_COLOCATE_ADD_TABLE = 94;
     public static final short OP_COLOCATE_REMOVE_TABLE = 95;
     public static final short OP_COLOCATE_BACKENDS_PER_BUCKETSEQ = 96;
-    public static final short OP_COLOCATE_MARK_BALANCING = 97;
+    public static final short OP_COLOCATE_MARK_UNSTABLE = 97;
     public static final short OP_COLOCATE_MARK_STABLE = 98;
     public static final short OP_MODIFY_TABLE_COLOCATE = 99;
 
@@ -166,4 +166,8 @@ public class OperationType {
     public static final short OP_CREATE_LOAD_JOB = 230;
     // this finish op include finished and cancelled
     public static final short OP_END_LOAD_JOB = 231;
+
+    // small files 251~260
+    public static final short OP_CREATE_SMALL_FILE = 251;
+    public static final short OP_DROP_SMALL_FILE = 252;
 }

@@ -32,7 +32,7 @@ import org.apache.logging.log4j.Logger;
 import java.net.URI;
 import java.net.URISyntaxException;
 
-import io.netty.handler.codec.http.HttpHeaders;
+import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpResponseStatus;
 
 public class RestBaseAction extends BaseAction {
@@ -49,7 +49,7 @@ public class RestBaseAction extends BaseAction {
             execute(request, response);
         } catch (DdlException e) {
             if (e instanceof UnauthorizedException) {
-                response.updateHeader(HttpHeaders.Names.WWW_AUTHENTICATE, "Basic realm=\"\"");
+                response.updateHeader(HttpHeaderNames.WWW_AUTHENTICATE.toString(), "Basic realm=\"\"");
                 writeResponse(request, response, HttpResponseStatus.UNAUTHORIZED);
             } else {
                 sendResult(request, response, new RestBaseResult(e.getMessage()));
@@ -65,7 +65,8 @@ public class RestBaseAction extends BaseAction {
         executeWithoutPassword(authInfo, request, response);
     }
 
-    // all derived classed should implement this method, NOT 'execute'
+    // If user password should be checked, the derived class should implement this method, NOT 'execute()',
+    // otherwise, override 'execute()' directly
     protected void executeWithoutPassword(AuthorizationInfo authInfo, BaseRequest request, BaseResponse response)
             throws DdlException {
         throw new DdlException("Not implemented");
@@ -74,6 +75,10 @@ public class RestBaseAction extends BaseAction {
     public void sendResult(BaseRequest request, BaseResponse response, RestBaseResult result) {
         response.appendContent(result.toJson());
         writeResponse(request, response, HttpResponseStatus.OK);
+    }
+
+    public void sendResult(BaseRequest request, BaseResponse response, HttpResponseStatus status) {
+        writeResponse(request, response, status);
     }
 
     public void sendResult(BaseRequest request, BaseResponse response) {
@@ -93,7 +98,7 @@ public class RestBaseAction extends BaseAction {
             LOG.warn(e.getMessage());
             throw new DdlException(e.getMessage());
         }
-        response.updateHeader(HttpHeaders.Names.LOCATION, resultUriObj.toString());
+        response.updateHeader(HttpHeaderNames.LOCATION.toString(), resultUriObj.toString());
         writeResponse(request, response, HttpResponseStatus.TEMPORARY_REDIRECT);
     }
 

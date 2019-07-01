@@ -61,8 +61,8 @@ import org.apache.doris.mysql.MysqlEofPacket;
 import org.apache.doris.mysql.MysqlSerializer;
 import org.apache.doris.mysql.privilege.PrivPredicate;
 import org.apache.doris.planner.Planner;
+import org.apache.doris.proto.PQueryStatistics;
 import org.apache.doris.rewrite.ExprRewriter;
-import org.apache.doris.rpc.PQueryStatistics;
 import org.apache.doris.rpc.RpcException;
 import org.apache.doris.task.LoadEtlTask;
 import org.apache.doris.thrift.TExplainLevel;
@@ -147,6 +147,10 @@ public class StmtExecutor {
         }
     }
 
+    public Planner planner() {
+        return planner;
+    }
+
     public boolean isForwardToMaster() {
         if (Catalog.getInstance().isMaster()) {
             return false;
@@ -204,7 +208,7 @@ public class StmtExecutor {
         context.setStmtId(STMT_ID_GENERATOR.incrementAndGet());
         try {
             // analyze this query
-            analyze();
+            analyze(context.getSessionVariable().toThrift());
 
             if (isForwardToMaster()) {
                 forwardToMaster();
@@ -333,7 +337,7 @@ public class StmtExecutor {
     }
 
     // Analyze one statement to structure in memory.
-    private void analyze() throws AnalysisException, UserException,
+    public void analyze(TQueryOptions tQueryOptions) throws AnalysisException, UserException,
                                                NotImplementedException {
         LOG.info("begin to analyze stmt: {}", context.getStmtId());
 
@@ -444,7 +448,7 @@ public class StmtExecutor {
                 // create plan
                 planner = new Planner();
                 if (parsedStmt instanceof QueryStmt || parsedStmt instanceof InsertStmt) {
-                    planner.plan(parsedStmt, analyzer, context.getSessionVariable().toThrift());
+                    planner.plan(parsedStmt, analyzer, tQueryOptions);
                 } else {
                     planner.plan(((CreateTableAsSelectStmt) parsedStmt).getInsertStmt(),
                             analyzer, new TQueryOptions());
@@ -801,6 +805,12 @@ public class StmtExecutor {
     public PQueryStatistics getQueryStatisticsForAuditLog() {
         if (statisticsForAuditLog == null) {
             statisticsForAuditLog = new PQueryStatistics();
+        }
+        if (statisticsForAuditLog.scan_bytes == null) {
+            statisticsForAuditLog.scan_bytes = 0L;
+        }
+        if (statisticsForAuditLog.scan_rows == null) {
+            statisticsForAuditLog.scan_rows = 0L;
         }
         return statisticsForAuditLog;
     }
