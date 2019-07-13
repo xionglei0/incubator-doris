@@ -154,6 +154,7 @@ ${DORIS_TEST_BINARY_DIR}/util/aes_util_test
 ${DORIS_TEST_BINARY_DIR}/util/string_util_test
 ${DORIS_TEST_BINARY_DIR}/util/coding_test
 ${DORIS_TEST_BINARY_DIR}/util/faststring_test
+${DORIS_TEST_BINARY_DIR}/util/tdigest_test
 
 ## Running common Unittest
 ${DORIS_TEST_BINARY_DIR}/common/resource_tls_test
@@ -162,6 +163,7 @@ ${DORIS_TEST_BINARY_DIR}/common/resource_tls_test
 ${DORIS_TEST_BINARY_DIR}/exprs/string_functions_test
 ${DORIS_TEST_BINARY_DIR}/exprs/json_function_test
 ${DORIS_TEST_BINARY_DIR}/exprs/timestamp_functions_test
+${DORIS_TEST_BINARY_DIR}/exprs/percentile_approx_test
 
 ## Running geo unit test
 ${DORIS_TEST_BINARY_DIR}/geo/geo_functions_test
@@ -177,6 +179,7 @@ if [ -f ${DORIS_TEST_BINARY_DIR}/exec/plain_text_line_reader_lzop_test ];then
     ${DORIS_TEST_BINARY_DIR}/exec/plain_text_line_reader_lzop_test
 fi
 ${DORIS_TEST_BINARY_DIR}/exec/broker_scanner_test
+${DORIS_TEST_BINARY_DIR}/exec/parquet_scanner_test
 ${DORIS_TEST_BINARY_DIR}/exec/broker_scan_node_test
 ${DORIS_TEST_BINARY_DIR}/exec/es_scan_node_test
 ${DORIS_TEST_BINARY_DIR}/exec/es_http_scan_node_test

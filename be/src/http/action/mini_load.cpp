@@ -646,7 +646,7 @@ Status MiniLoadAction::_begin_mini_load(StreamLoadContext* ctx) {
     if (ctx->max_filter_ratio != 0.0) {
         request.__set_max_filter_ratio(ctx->max_filter_ratio);
     }
-    request.__set_create_timestamp(GetCurrentTimeMicros());
+    request.__set_create_timestamp(UnixMillis());
     // begin load by master
     const TNetworkAddress& master_addr = _exec_env->master_info()->network_address;
     TMiniLoadBeginResult res;
@@ -809,6 +809,9 @@ void MiniLoadAction::_new_handle(HttpRequest* req) {
     if (!ctx->status.ok()) {
         if (ctx->need_rollback) {
             _exec_env->stream_load_executor()->rollback_txn(ctx);
+            if (ctx->status.code() == TStatusCode::PUBLISH_TIMEOUT) {
+                ctx->status = Status::PublishTimeout("transation has been rollback because it was timeout in phase of publish");    
+            }
             ctx->need_rollback = false;
         }
         if (ctx->body_sink.get() != nullptr) {

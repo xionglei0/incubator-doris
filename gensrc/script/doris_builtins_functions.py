@@ -112,6 +112,8 @@ visible_functions = [
         '_ZN5doris18TimestampFunctions3nowEPN9doris_udf15FunctionContextE'],
     [['curtime', 'current_time'], 'DATETIME', [],
         '_ZN5doris18TimestampFunctions7curtimeEPN9doris_udf15FunctionContextE'],
+    [['utc_timestamp'], 'DATETIME', [],
+        '_ZN5doris18TimestampFunctions13utc_timestampEPN9doris_udf15FunctionContextE'],
     [['timestamp'], 'DATETIME', ['DATETIME'],
         '_ZN5doris18TimestampFunctions9timestampEPN9doris_udf15FunctionContextERKNS1_11DateTimeValE'],
 
@@ -554,6 +556,8 @@ visible_functions = [
         '_ZN5doris15StringFunctions12money_formatEPN9doris_udf15FunctionContextERKNS1_10DecimalValE'],
     [['money_format'], 'VARCHAR', ['DECIMALV2'],
         '_ZN5doris15StringFunctions12money_formatEPN9doris_udf15FunctionContextERKNS1_12DecimalV2ValE'],
+     [['split_part'], 'VARCHAR', ['VARCHAR', 'VARCHAR', 'INT'],
+        '_ZN5doris15StringFunctions10split_partEPN9doris_udf15FunctionContextERKNS1_9StringValES6_RKNS1_6IntValE'],
 
     # Utility functions
     [['sleep'], 'BOOLEAN', ['INT'],

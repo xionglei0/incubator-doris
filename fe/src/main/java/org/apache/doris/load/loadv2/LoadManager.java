@@ -66,6 +66,11 @@ import java.util.stream.Collectors;
 
 /**
  * The broker and mini load jobs(v2) are included in this class.
+ *
+ * The lock sequence:
+ * Database.lock
+ *   LoadManager.lock
+ *     LoadJob.lock
  */
 public class LoadManager implements Writable{
     private static final Logger LOG = LogManager.getLogger(LoadManager.class);
@@ -74,7 +79,7 @@ public class LoadManager implements Writable{
     private Map<Long, Map<String, List<LoadJob>>> dbIdToLabelToLoadJobs = Maps.newConcurrentMap();
     private LoadJobScheduler loadJobScheduler;
 
-    private ReentrantReadWriteLock lock = new ReentrantReadWriteLock(true);
+    private ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
 
     public LoadManager(LoadJobScheduler loadJobScheduler) {
         this.loadJobScheduler = loadJobScheduler;
@@ -246,7 +251,7 @@ public class LoadManager implements Writable{
     }
 
     public void recordFinishedLoadJob(String label, String dbName, long tableId, EtlJobType jobType,
-                                      long createTimestamp) throws MetaNotFoundException {
+            long createTimestamp, String failMsg) throws MetaNotFoundException {
 
         // get db id
         Database db = Catalog.getCurrentCatalog().getDb(dbName);
@@ -257,7 +262,7 @@ public class LoadManager implements Writable{
         LoadJob loadJob;
         switch (jobType) {
             case INSERT:
-                loadJob = new InsertLoadJob(label, db.getId(), tableId, createTimestamp);
+                loadJob = new InsertLoadJob(label, db.getId(), tableId, createTimestamp, failMsg);
                 break;
             default:
                 return;
@@ -267,7 +272,7 @@ public class LoadManager implements Writable{
         Catalog.getCurrentCatalog().getEditLog().logCreateLoadJob(loadJob);
     }
 
-    public void cancelLoadJob(CancelLoadStmt stmt) throws DdlException, MetaNotFoundException {
+    public void cancelLoadJob(CancelLoadStmt stmt) throws DdlException {
         Database db = Catalog.getInstance().getDb(stmt.getDbName());
         if (db == null) {
             throw new DdlException("Db does not exist. name: " + stmt.getDbName());
@@ -411,7 +416,7 @@ public class LoadManager implements Writable{
                     }
                     // add load job info
                     loadJobInfos.add(loadJob.getShowInfo());
-                } catch (DdlException | MetaNotFoundException e) {
+                } catch (DdlException e) {
                     continue;
                 }
             }
@@ -421,7 +426,7 @@ public class LoadManager implements Writable{
         }
     }
 
-    public void getLoadJobInfo(Load.JobInfo info) throws DdlException, MetaNotFoundException {
+    public void getLoadJobInfo(Load.JobInfo info) throws DdlException {
         String fullDbName = ClusterNamespace.getFullName(info.clusterName, info.dbName);
         info.dbName = fullDbName;
         Database database = checkDb(info.dbName);
@@ -463,6 +468,12 @@ public class LoadManager implements Writable{
         return db;
     }
 
+    /**
+     * Please don't lock any load lock before check table
+     * @param database
+     * @param tableName
+     * @throws DdlException
+     */
     private void checkTable(Database database, String tableName) throws DdlException {
         database.readLock();
         try {

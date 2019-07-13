@@ -855,7 +855,7 @@ public class FunctionSet {
                         prefix + STDDEV_UPDATE_SYMBOL.get(t),
                         prefix + "15knuth_var_mergeEPN9doris_udf15FunctionContextERKNS1_9StringValEPS4_",
                         null,
-                        prefix + "21knuth_stddev_finalizeEPN9doris_udf15FunctionContextERKNS1_9StringValE",
+                        prefix + "25knuth_stddev_pop_finalizeEPN9doris_udf15FunctionContextERKNS1_9StringValE",
                         false, false, false));
                 addBuiltin(AggregateFunction.createBuiltin("stddev_samp",
                         Lists.newArrayList(t), Type.DOUBLE, Type.VARCHAR,
@@ -879,7 +879,7 @@ public class FunctionSet {
                         prefix + STDDEV_UPDATE_SYMBOL.get(t),
                         prefix + "15knuth_var_mergeEPN9doris_udf15FunctionContextERKNS1_9StringValEPS4_",
                         null,
-                        prefix + "18knuth_var_finalizeEPN9doris_udf15FunctionContextERKNS1_9StringValE",
+                        prefix + "22knuth_var_pop_finalizeEPN9doris_udf15FunctionContextERKNS1_9StringValE",
                         false, false, false));
                 addBuiltin(AggregateFunction.createBuiltin("variance_samp",
                         Lists.newArrayList(t), Type.DOUBLE, Type.VARCHAR,
@@ -956,6 +956,16 @@ public class FunctionSet {
                     prefix + "10sum_removeIN9doris_udf11LargeIntValES3_EEvPNS2_15FunctionContextERKT_PT0_",
                     null, false, true, false));
         }
+
+        //PercentileApprox
+        addBuiltin(AggregateFunction.createBuiltin("percentile_approx",
+                Lists.<Type>newArrayList(Type.DOUBLE, Type.DOUBLE), Type.DOUBLE, Type.VARCHAR,
+                prefix + "22percentile_approx_initEPN9doris_udf15FunctionContextEPNS1_9StringValE",
+                prefix + "24percentile_approx_updateIN9doris_udf9DoubleValEEEvPNS2_15FunctionContextERKT_RKS3_PNS2_9StringValE",
+                prefix + "23percentile_approx_mergeEPN9doris_udf15FunctionContextERKNS1_9StringValEPS4_",
+                prefix + "27percentile_approx_serializeEPN9doris_udf15FunctionContextERKNS1_9StringValE",
+                prefix + "26percentile_approx_finalizeEPN9doris_udf15FunctionContextERKNS1_9StringValE",
+                false, false, false));
 
 
         // Avg
