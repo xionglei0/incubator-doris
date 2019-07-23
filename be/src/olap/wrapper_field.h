@@ -20,13 +20,14 @@
 
 #include "olap/field.h"
 #include "olap/olap_define.h"
+#include "olap/tablet_schema.h"
 #include "util/hash_util.hpp"
 
 namespace doris {
 
 class WrapperField {
 public:
-    static WrapperField* create(const FieldInfo& info, uint32_t len = 0);
+    static WrapperField* create(const TabletColumn& column, uint32_t len = 0);
     static WrapperField* create_by_type(const FieldType& type);
 
     WrapperField(Field* rep, size_t variable_len, bool is_string_type);
@@ -103,10 +104,6 @@ public:
 
     void set_to_min() {
         _rep->set_to_min(_buf);
-    }
-
-    bool is_min() {
-        return _rep->is_min(_buf);
     }
 
     int cmp(const WrapperField* field) const {
