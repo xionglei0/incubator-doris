@@ -1,18 +1,17 @@
 # timediff
-
-## Syntax
+## description
+### Syntax
 
 `TIME TIMEDIFF(DATETIME expr1, DATETIME expr2)`
 
-## Description
 
-TIMEDIFF·µ»ØÁ½¸öDATETIMEÖ®¼äµÄ²îÖµ
+TIMEDIFFè¿”å›žä¸¤ä¸ªDATETIMEä¹‹é—´çš„å·®å€¼
 
-TIMEDIFFº¯Êý·µ»Ø±íÊ¾ÎªÊ±¼äÖµµÄexpr1 - expr2µÄ½á¹û£¬·µ»ØÖµÎªTIMEÀàÐÍ
+TIMEDIFFå‡½æ•°è¿”å›žè¡¨ç¤ºä¸ºæ—¶é—´å€¼çš„expr1 - expr2çš„ç»“æžœï¼Œè¿”å›žå€¼ä¸ºTIMEç±»åž‹
 
-Æä½á¹û±»ÏÞÖÆÔÚ´Ó-838:59:59µ½838:59:59Ö®¼äµÄTIMEÖµ·¶Î§ÄÚ
+å…¶ç»“æžœè¢«é™åˆ¶åœ¨ä»Ž-838:59:59åˆ°838:59:59ä¹‹é—´çš„TIMEå€¼èŒƒå›´å†…
 
-## Examples
+## example
 
 ```
 mysql> SELECT TIMEDIFF(now(),utc_timestamp());
@@ -43,4 +42,5 @@ mysql> SELECT TIMEDIFF('2019-01-01 00:00:00', NULL);
 | NULL                                  |
 +---------------------------------------+
 ```
-
+##keyword
+TIMEDIFF

@@ -27,7 +27,8 @@
 
 #include "olap/olap_common.h"
 #include "olap/olap_define.h"
-#include "olap/field_info.h"
+#include "olap/uint24.h"
+#include "olap/decimal12.h"
 #include "runtime/mem_pool.h"
 #include "util/hash_util.hpp"
 #include "util/mem_util.hpp"
@@ -47,16 +48,20 @@ public:
         return _cmp(left, right);
     }
 
-    inline void copy_with_pool(void* dest, const void* src, MemPool* mem_pool) const {
-        _copy_with_pool(dest, src, mem_pool);
+    inline void shallow_copy(void* dest, const void* src) const {
+        _shallow_copy(dest, src);
+    }
+
+    inline void deep_copy(void* dest, const void* src, MemPool* mem_pool) const {
+        _deep_copy(dest, src, mem_pool);
     }
 
     inline void copy_with_arena(void* dest, const void* src, Arena* arena) const {
         _copy_with_arena(dest, src, arena);
     }
 
-    inline void copy_without_pool(void* dest, const void* src) const {
-        _copy_without_pool(dest, src);
+    inline void direct_copy(void* dest, const void* src) const {
+        _direct_copy(dest, src);
     }
 
     OLAPStatus from_string(void* buf, const std::string& scan_key) const {
@@ -65,8 +70,8 @@ public:
 
     std::string to_string(const void* src) const { return _to_string(src); }
 
-    inline void set_to_max(void* buf) { _set_to_max(buf); }
-    inline void set_to_min(void* buf) { _set_to_min(buf); }
+    inline void set_to_max(void* buf) const { _set_to_max(buf); }
+    inline void set_to_min(void* buf) const { _set_to_min(buf); }
 
     inline uint32_t hash_code(const void* data, uint32_t seed) const { return _hash_code(data, seed); }
     inline const size_t size() const { return _size; }
@@ -76,9 +81,10 @@ private:
     bool (*_equal)(const void* left, const void* right);
     int (*_cmp)(const void* left, const void* right);
 
-    void (*_copy_with_pool)(void* dest, const void* src, MemPool* mem_pool);
+    void (*_shallow_copy)(void* dest, const void* src);
+    void (*_deep_copy)(void* dest, const void* src, MemPool* mem_pool);
     void (*_copy_with_arena)(void* dest, const void* src, Arena* arena);
-    void (*_copy_without_pool)(void* dest, const void* src);
+    void (*_direct_copy)(void* dest, const void* src);
 
     OLAPStatus (*_from_string)(void* buf, const std::string& scan_key);
     std::string (*_to_string)(const void* src);
@@ -103,24 +109,31 @@ struct CppTypeTraits {
 
 template<> struct CppTypeTraits<OLAP_FIELD_TYPE_BOOL> {
     using CppType = bool;
+    using UnsignedCppType = bool;
 };
 template<> struct CppTypeTraits<OLAP_FIELD_TYPE_TINYINT> {
     using CppType = int8_t;
+    using UnsignedCppType = uint8_t;
 };
 template<> struct CppTypeTraits<OLAP_FIELD_TYPE_SMALLINT> {
     using CppType = int16_t;
+    using UnsignedCppType = uint16_t;
 };
 template<> struct CppTypeTraits<OLAP_FIELD_TYPE_INT> {
     using CppType = int32_t;
+    using UnsignedCppType = uint32_t;
 };
 template<> struct CppTypeTraits<OLAP_FIELD_TYPE_UNSIGNED_INT> {
     using CppType = uint32_t;
+    using UnsignedCppType = uint32_t;
 };
 template<> struct CppTypeTraits<OLAP_FIELD_TYPE_BIGINT> {
     using CppType = int64_t;
+    using UnsignedCppType = uint64_t;
 };
 template<> struct CppTypeTraits<OLAP_FIELD_TYPE_LARGEINT> {
     using CppType = int128_t;
+    using UnsignedCppType = unsigned int128_t;
 };
 template<> struct CppTypeTraits<OLAP_FIELD_TYPE_FLOAT> {
     using CppType = float;
@@ -130,12 +143,15 @@ template<> struct CppTypeTraits<OLAP_FIELD_TYPE_DOUBLE> {
 };
 template<> struct CppTypeTraits<OLAP_FIELD_TYPE_DECIMAL> {
     using CppType = decimal12_t;
+    using UnsignedCppType = decimal12_t;
 };
 template<> struct CppTypeTraits<OLAP_FIELD_TYPE_DATE> {
     using CppType = uint24_t;
+    using UnsignedCppType = uint24_t;
 };
 template<> struct CppTypeTraits<OLAP_FIELD_TYPE_DATETIME> {
     using CppType = int64_t;
+    using UnsignedCppType = uint64_t;
 };
 template<> struct CppTypeTraits<OLAP_FIELD_TYPE_CHAR> {
     using CppType = Slice;
@@ -148,7 +164,7 @@ template<> struct CppTypeTraits<OLAP_FIELD_TYPE_HLL> {
 };
 
 template<FieldType field_type>
-struct BaseFieldtypeTraits {
+struct BaseFieldtypeTraits : public CppTypeTraits<field_type> {
     using CppType = typename CppTypeTraits<field_type>::CppType;
 
     static inline bool equal(const void* left, const void* right) {
@@ -169,7 +185,11 @@ struct BaseFieldtypeTraits {
         }
     }
 
-    static inline void copy_with_pool(void* dest, const void* src, MemPool* mem_pool) {
+    static inline void shallow_copy(void* dest, const void* src) {
+        *reinterpret_cast<CppType*>(dest) = *reinterpret_cast<const CppType*>(src);
+    }
+
+    static inline void deep_copy(void* dest, const void* src, MemPool* mem_pool) {
         *reinterpret_cast<CppType*>(dest) = *reinterpret_cast<const CppType*>(src);
     }
 
@@ -177,7 +197,7 @@ struct BaseFieldtypeTraits {
         *reinterpret_cast<CppType*>(dest) = *reinterpret_cast<const CppType*>(src);
     }
 
-    static inline void copy_without_pool(void* dest, const void* src) {
+    static inline void direct_copy(void* dest, const void* src) {
         *reinterpret_cast<CppType*>(dest) = *reinterpret_cast<const CppType*>(src);
     }
 
@@ -314,15 +334,19 @@ struct FieldTypeTraits<OLAP_FIELD_TYPE_LARGEINT> : public BaseFieldtypeTraits<OL
 
         return std::string(buf);
     }
+
     // GCC7.3 will generate movaps instruction, which will lead to SEGV when buf is
     // not aligned to 16 byte
-    static void copy_with_pool(void* dest, const void* src, MemPool* mem_pool) {
+    static void shallow_copy(void* dest, const void* src) {
+        *reinterpret_cast<PackedInt128*>(dest) = *reinterpret_cast<const PackedInt128*>(src);
+    }
+    static void deep_copy(void* dest, const void* src, MemPool* mem_pool) {
         *reinterpret_cast<PackedInt128*>(dest) = *reinterpret_cast<const PackedInt128*>(src);
     }
     static void copy_with_arena(void* dest, const void* src, Arena* arena) {
         *reinterpret_cast<PackedInt128*>(dest) = *reinterpret_cast<const PackedInt128*>(src);
     }
-    static void copy_without_pool(void* dest, const void* src) {
+    static void direct_copy(void* dest, const void* src) {
         *reinterpret_cast<PackedInt128*>(dest) = *reinterpret_cast<const PackedInt128*>(src);
     }
     static void set_to_max(void* buf) {
@@ -474,24 +498,24 @@ struct FieldTypeTraits<OLAP_FIELD_TYPE_DATETIME> : public BaseFieldtypeTraits<OL
 template<>
 struct FieldTypeTraits<OLAP_FIELD_TYPE_CHAR> : public BaseFieldtypeTraits<OLAP_FIELD_TYPE_CHAR> {
     static bool equal(const void* left, const void* right) {
-        const Slice* l_slice = reinterpret_cast<const Slice*>(left);
-        const Slice* r_slice = reinterpret_cast<const Slice*>(right);
+        auto l_slice = reinterpret_cast<const Slice*>(left);
+        auto r_slice = reinterpret_cast<const Slice*>(right);
         return *l_slice == *r_slice;
     }
     static int cmp(const void* left, const void* right) {
-        const Slice* l_slice = reinterpret_cast<const Slice*>(left);
-        const Slice* r_slice = reinterpret_cast<const Slice*>(right);
+        auto l_slice = reinterpret_cast<const Slice*>(left);
+        auto r_slice = reinterpret_cast<const Slice*>(right);
         return l_slice->compare(*r_slice);
     }
     static OLAPStatus from_string(void* buf, const std::string& scan_key) {
         size_t value_len = scan_key.length();
         if (value_len > OLAP_STRING_MAX_LENGTH) {
-            OLAP_LOG_WARNING("the len of value string is too long[len=%lu, max_len=%lu].",
-                             value_len, OLAP_STRING_MAX_LENGTH);
+            LOG(WARNING) << "the len of value string is too long, len=" << value_len
+                << ", max_len=" <<  OLAP_STRING_MAX_LENGTH;
             return OLAP_ERR_INPUT_PARAMETER_ERROR;
         }
 
-        Slice* slice = reinterpret_cast<Slice*>(buf);
+        auto slice = reinterpret_cast<Slice*>(buf);
         memory_copy(slice->data, scan_key.c_str(), value_len);
         if (slice->size < value_len) {
             /*
@@ -504,41 +528,41 @@ struct FieldTypeTraits<OLAP_FIELD_TYPE_CHAR> : public BaseFieldtypeTraits<OLAP_F
         return OLAP_SUCCESS;
     }
     static std::string to_string(const void* src) {
-        const Slice* slice = reinterpret_cast<const Slice*>(src);
+        auto slice = reinterpret_cast<const Slice*>(src);
         return slice->to_string();
     }
-    static void copy_with_pool(void* dest, const void* src, MemPool* mem_pool) {
-        Slice* l_slice = reinterpret_cast<Slice*>(dest);
-        const Slice* r_slice = reinterpret_cast<const Slice*>(src);
+    static void deep_copy(void* dest, const void* src, MemPool* mem_pool) {
+        auto l_slice = reinterpret_cast<Slice*>(dest);
+        auto r_slice = reinterpret_cast<const Slice*>(src);
         l_slice->data = reinterpret_cast<char*>(mem_pool->allocate(r_slice->size));
         memory_copy(l_slice->data, r_slice->data, r_slice->size);
         l_slice->size = r_slice->size;
     }
     static void copy_with_arena(void* dest, const void* src, Arena* arena) {
-        Slice* l_slice = reinterpret_cast<Slice*>(dest);
-        const Slice* r_slice = reinterpret_cast<const Slice*>(src);
+        auto l_slice = reinterpret_cast<Slice*>(dest);
+        auto r_slice = reinterpret_cast<const Slice*>(src);
         l_slice->data = reinterpret_cast<char*>(arena->Allocate(r_slice->size));
         memory_copy(l_slice->data, r_slice->data, r_slice->size);
         l_slice->size = r_slice->size;
     }
-    static void copy_without_pool(void* dest, const void* src) {
-        Slice* l_slice = reinterpret_cast<Slice*>(dest);
-        const Slice* r_slice = reinterpret_cast<const Slice*>(src);
+    static void direct_copy(void* dest, const void* src) {
+        auto l_slice = reinterpret_cast<Slice*>(dest);
+        auto r_slice = reinterpret_cast<const Slice*>(src);
         memory_copy(l_slice->data, r_slice->data, r_slice->size);
         l_slice->size = r_slice->size;
     }
     static void set_to_max(void* buf) {
         // this function is used by scan key,
         // the size may be greater than length in schema.
-        Slice* slice = reinterpret_cast<Slice*>(buf);
+        auto slice = reinterpret_cast<Slice*>(buf);
         memset(slice->data, 0xff, slice->size);
     }
     static void set_to_min(void* buf) {
-        Slice* slice = reinterpret_cast<Slice*>(buf);
+        auto slice = reinterpret_cast<Slice*>(buf);
         memset(slice->data, 0, slice->size);
     }
     static uint32_t hash_code(const void* data, uint32_t seed) {
-        const Slice* slice = reinterpret_cast<const Slice*>(data);
+        auto slice = reinterpret_cast<const Slice*>(data);
         return HashUtil::hash(slice->data, slice->size, seed);
     }
 };
@@ -548,23 +572,23 @@ struct FieldTypeTraits<OLAP_FIELD_TYPE_VARCHAR> : public FieldTypeTraits<OLAP_FI
     static OLAPStatus from_string(void* buf, const std::string& scan_key) {
         size_t value_len = scan_key.length();
         if (value_len > OLAP_STRING_MAX_LENGTH) {
-            OLAP_LOG_WARNING("the len of value string is too long[len=%lu, max_len=%lu].",
-                             value_len, OLAP_STRING_MAX_LENGTH);
+            LOG(WARNING) << "the len of value string is too long, len=" << value_len
+                << ", max_len=" <<  OLAP_STRING_MAX_LENGTH;
             return OLAP_ERR_INPUT_PARAMETER_ERROR;
         }
 
-        Slice* slice = reinterpret_cast<Slice*>(buf);
+        auto slice = reinterpret_cast<Slice*>(buf);
         memory_copy(slice->data, scan_key.c_str(), value_len);
         slice->size = value_len;
         return OLAP_SUCCESS;
     }
     static void set_to_max(void* buf) {
-        Slice* slice = reinterpret_cast<Slice*>(buf);
+        auto slice = reinterpret_cast<Slice*>(buf);
         slice->size = 1;
         memset(slice->data, 0xFF, 1);
     }
     static void set_to_min(void* buf) {
-        Slice* slice = reinterpret_cast<Slice*>(buf);
+        auto slice = reinterpret_cast<Slice*>(buf);
         slice->size = 0;
     }
 };
@@ -581,7 +605,7 @@ struct FieldTypeTraits<OLAP_FIELD_TYPE_HLL> : public FieldTypeTraits<OLAP_FIELD_
 // Instantiate this template to get static access to the type traits.
 template<FieldType field_type>
 struct TypeTraits : public FieldTypeTraits<field_type> {
-    using CppType = typename FieldTypeTraits<field_type>::CppType;
+    using CppType = typename CppTypeTraits<field_type>::CppType;
 
     static const FieldType type = field_type;
     static const int32_t size = sizeof(CppType);

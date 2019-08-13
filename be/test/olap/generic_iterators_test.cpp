@@ -22,7 +22,7 @@
 #include <gtest/gtest.h>
 
 #include "olap/olap_common.h"
-#include "olap/schema2.h"
+#include "olap/schema.h"
 #include "olap/row_block2.h"
 #include "util/slice.h"
 
@@ -35,38 +35,17 @@ public:
     }
 };
 
-SchemaV2 create_schema() {
-    std::vector<ColumnSchemaV2> col_schemas;
+Schema create_schema() {
+    std::vector<Field> col_schemas;
 
     // c1: small int
-    {
-        FieldInfo info;
-        auto type = get_type_info(OLAP_FIELD_TYPE_SMALLINT);
-        info.length = type->size();
-        info.type = type->type();
-        info.is_allow_null = true;
-        col_schemas.push_back(info);
-    }
+    col_schemas.emplace_back(OLAP_FIELD_AGGREGATION_NONE, OLAP_FIELD_TYPE_SMALLINT, true);
     // c2: int
-    {
-        FieldInfo info;
-        auto type = get_type_info(OLAP_FIELD_TYPE_INT);
-        info.length = type->size();
-        info.type = type->type();
-        info.is_allow_null = true;
-        col_schemas.push_back(info);
-    }
+    col_schemas.emplace_back(OLAP_FIELD_AGGREGATION_NONE, OLAP_FIELD_TYPE_INT, true);
     // c3: big int
-    {
-        FieldInfo info;
-        auto type = get_type_info(OLAP_FIELD_TYPE_BIGINT);
-        info.length = type->size();
-        info.type = type->type();
-        info.is_allow_null = true;
-        col_schemas.push_back(info);
-    }
+    col_schemas.emplace_back(OLAP_FIELD_AGGREGATION_SUM, OLAP_FIELD_TYPE_BIGINT, true);
 
-    SchemaV2 schema(col_schemas, 2);
+    Schema schema(col_schemas, 2);
     return schema;
 }
 

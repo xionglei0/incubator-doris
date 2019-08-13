@@ -35,14 +35,13 @@ add_library(Olap STATIC
     cumulative_compaction.cpp
     delete_handler.cpp
     delta_writer.cpp
-    field.cpp
-    field_info.cpp
     file_helper.cpp
     file_stream.cpp
     generic_iterators.cpp
     hll.cpp
     in_list_predicate.cpp
     in_stream.cpp
+    key_coder.cpp
     lru_cache.cpp
     memtable.cpp
     merger.cpp
@@ -54,17 +53,19 @@ add_library(Olap STATIC
     olap_server.cpp
     options.cpp
     out_stream.cpp
+    page_cache.cpp
     push_handler.cpp
     reader.cpp
     row_block.cpp
     row_block2.cpp
     row_cursor.cpp
     rowset_graph.cpp
-    schema2.cpp
+    schema.cpp
     schema_change.cpp
     serialize.cpp
     storage_engine.cpp
     data_dir.cpp
+    short_key_index.cpp
     snapshot_manager.cpp
     stream_index_common.cpp
     stream_index_reader.cpp
@@ -79,11 +80,16 @@ add_library(Olap STATIC
     types.cpp 
     utils.cpp
     wrapper_field.cpp
+    rowset/segment_v2/bitshuffle_page.cpp
     rowset/segment_v2/bitshuffle_wrapper.cpp
     rowset/segment_v2/column_reader.cpp
     rowset/segment_v2/column_writer.cpp
     rowset/segment_v2/encoding_info.cpp
     rowset/segment_v2/ordinal_page_index.cpp
+    rowset/segment_v2/binary_dict_page.cpp
+    rowset/segment_v2/segment.cpp
+    rowset/segment_v2/segment_iterator.cpp
+    rowset/segment_v2/segment_writer.cpp
     rowset_factory.cpp
     task/engine_batch_load_task.cpp
     task/engine_checksum_task.cpp

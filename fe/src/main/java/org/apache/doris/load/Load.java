@@ -17,14 +17,6 @@
 
 package org.apache.doris.load;
 
-import com.google.common.base.Joiner;
-import com.google.common.base.Preconditions;
-import com.google.common.base.Strings;
-import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
-import com.google.common.collect.Sets;
-import com.google.gson.Gson;
-import org.apache.commons.lang.StringUtils;
 import org.apache.doris.analysis.BinaryPredicate;
 import org.apache.doris.analysis.CancelLoadStmt;
 import org.apache.doris.analysis.ColumnSeparator;
@@ -98,6 +90,16 @@ import org.apache.doris.transaction.TableCommitInfo;
 import org.apache.doris.transaction.TransactionState;
 import org.apache.doris.transaction.TransactionState.LoadJobSourceType;
 import org.apache.doris.transaction.TransactionStatus;
+
+import com.google.common.base.Joiner;
+import com.google.common.base.Preconditions;
+import com.google.common.base.Strings;
+import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
+import com.google.common.collect.Sets;
+import com.google.gson.Gson;
+
+import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -297,8 +299,9 @@ public class Load {
             formatType = params.get(LoadStmt.KEY_IN_PARAM_FORMAT_TYPE);
         }
 
-        DataDescription dataDescription = new DataDescription(tableName, partitionNames, filePaths, columnNames,
-                                                    columnSeparator, formatType, false, null);
+        DataDescription dataDescription = new DataDescription(tableName, partitionNames, filePaths,
+                                                                             columnNames,
+                                                                             columnSeparator, formatType, false, null);
         dataDescription.setLineDelimiter(lineDelimiter);
         dataDescription.setBeAddr(beAddr);
         // parse hll param pair
@@ -358,56 +361,6 @@ public class Load {
 
         // create job
         LoadJob job = createLoadJob(stmt, etlJobType, db, timestamp);
-        addLoadJob(job, db);
-    }
-
-    // for insert select from or create as stmt
-    public void addLoadJob(String label, String dbName,
-                           long tableId, Map<Long, Integer> indexIdToSchemaHash,
-                           long transactionId,
-                           List<String> fileList, long timestamp) throws DdlException {
-        // get db and table
-        Database db = Catalog.getInstance().getDb(dbName);
-        if (db == null) {
-            throw new DdlException("Database[" + dbName + "] does not exist");
-        }
-
-        OlapTable table = null;
-        db.readLock();
-        try {
-            table = (OlapTable) db.getTable(tableId);
-        } finally {
-            db.readUnlock();
-        }
-        if (table == null) {
-            throw new DdlException("Table[" + tableId + "] does not exist");
-        }
-
-        // create job
-        DataDescription desc = new DataDescription(table.getName(), null, Lists.newArrayList(""),
-                                                   null, null, false, null);
-        LoadStmt stmt = new LoadStmt(new LabelName(dbName, label), Lists.newArrayList(desc), null, null, null);
-        LoadJob job = createLoadJob(stmt, EtlJobType.INSERT, db, timestamp);
-
-        // add schema hash
-        for (Map.Entry<Long, Integer> entry : indexIdToSchemaHash.entrySet()) {
-            job.getTableLoadInfo(tableId).addIndexSchemaHash(entry.getKey(), entry.getValue());
-        }
-
-        // file size use -1 temporarily
-        Map<String, Long> fileMap = Maps.newHashMap();
-        for (String filePath : fileList) {
-            fileMap.put(filePath, -1L);
-        }
-
-        // update job info to etl finish
-        EtlStatus status = job.getEtlJobStatus();
-        status.setState(TEtlState.FINISHED);
-        status.setFileMap(fileMap);
-        job.setState(JobState.ETL);
-        job.setTransactionId(transactionId);
-
-        // add load job
         addLoadJob(job, db);
     }
 
@@ -519,7 +472,7 @@ public class Load {
         Map<Long, Map<Long, List<Source>>> tableToPartitionSources = Maps.newHashMap();
         for (DataDescription dataDescription : dataDescriptions) {
             // create source
-            checkAndCreateSource(db, dataDescription, tableToPartitionSources, job.getDeleteFlag());
+            checkAndCreateSource(db, dataDescription, tableToPartitionSources, job.getDeleteFlag(), etlJobType);
             job.addTableName(dataDescription.getTableName());
         }
         for (Entry<Long, Map<Long, List<Source>>> tableEntry : tableToPartitionSources.entrySet()) {
@@ -630,7 +583,7 @@ public class Load {
         } else if (etlJobType == EtlJobType.BROKER) {
             if (job.getTimeoutSecond() == 0) {
                 // set default timeout
-                job.setTimeoutSecond(Config.pull_load_task_default_timeout_second);
+                job.setTimeoutSecond(Config.broker_load_default_timeout_second);
             }
         } else if (etlJobType == EtlJobType.INSERT) {
             job.setPrority(TPriority.HIGH);
@@ -648,7 +601,7 @@ public class Load {
 
     public static void checkAndCreateSource(Database db, DataDescription dataDescription,
                                             Map<Long, Map<Long, List<Source>>> tableToPartitionSources,
-                                            boolean deleteFlag)
+                                            boolean deleteFlag, EtlJobType jobType)
             throws DdlException {
         Source source = new Source(dataDescription.getFilePaths());
         long tableId = -1;
@@ -666,6 +619,11 @@ public class Load {
             tableId = table.getId();
             if (table.getType() != TableType.OLAP) {
                 throw new DdlException("Table [" + tableName + "] is not olap table");
+            }
+
+            if (((OlapTable) table).getPartitionInfo().isMultiColumnPartition() && jobType == EtlJobType.HADOOP) {
+                throw new DdlException("Load by hadoop cluster does not support table with multi partition columns."
+                        + " Table: " + table.getName() + ". Try using broker load. See 'help broker load;'");
             }
 
             // check partition
@@ -715,7 +673,7 @@ public class Load {
             source.setColumnNames(columnNames);
 
             // check default value
-            Map<String, Pair<String, List<String>>> assignColumnToFunction = dataDescription.getColumnMapping();
+            Map<String, Pair<String, List<String>>> assignColumnToFunction = dataDescription.getColumnToHadoopFunction();
             for (Column column : tableSchema) {
                 String columnName = column.getName();
                 if (columnNames.contains(columnName)) {
@@ -777,7 +735,7 @@ public class Load {
                     Pair<String, List<String>> function = entry.getValue();
                     try {
                         DataDescription.validateMappingFunction(function.first, function.second, columnNameMap,
-                                                                mappingColumn, dataDescription.isPullLoad());
+                                                                mappingColumn, dataDescription.isHadoopLoad());
                     } catch (AnalysisException e) {
                         throw new DdlException(e.getMessage());
                     }

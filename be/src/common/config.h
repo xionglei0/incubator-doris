@@ -225,6 +225,9 @@ namespace config {
     CONF_Int64(index_stream_cache_capacity, "10737418240");
     CONF_Int64(max_packed_row_block_size, "20971520");
 
+    // Cache for stoage page size
+    CONF_String(storage_page_cache_limit, "20G");
+
     // be policy
     CONF_Int64(base_compaction_start_hour, "20");
     CONF_Int64(base_compaction_end_hour, "7");
@@ -259,11 +262,19 @@ namespace config {
     CONF_Int64(load_data_reserve_hours, "4");
     // log error log will be removed after this time
     CONF_Int64(load_error_log_reserve_hours, "48");
+    // Deprecated, use streaming_load_max_mb instead
     CONF_Int64(mini_load_max_mb, "2048");
     CONF_Int32(number_tablet_writer_threads, "16");
 
     CONF_Int64(streaming_load_max_mb, "10240");
-    CONF_Int32(streaming_load_rpc_max_alive_time_sec, "600");
+    // the alive time of a TabletsChannel.
+    // If the channel does not receive any data till this time,
+    // the channel will be removed.
+    CONF_Int32(streaming_load_rpc_max_alive_time_sec, "1200");
+    // the timeout of a rpc to process one batch in tablet writer.
+    // you may need to increase this timeout if using larger 'streaming_load_max_mb',
+    // or encounter 'tablet writer write failed' error when loading.
+    CONF_Int32(tablet_writer_rpc_timeout_sec, "600");
 
     // Fragment thread pool
     CONF_Int32(fragment_pool_thread_num, "64");
@@ -405,6 +416,14 @@ namespace config {
     // This configuration is used to recover compaction under the corner case.
     // If this configuration is set to true, block will seek position.
     CONF_Bool(block_seek_position, "false");
+
+    // max external scan cache batch count, means cache max_memory_cache_batch_count * batch_size row
+    // default is 10, batch_size's defualt value is 1024 means 10 * 1024 rows will be cached
+    CONF_Int32(max_memory_sink_batch_count, "20");
+    
+    // This configuration is used for the context gc thread schedule period
+    // note: unit is minute, default is 5min
+    CONF_Int32(scan_context_gc_interval_min, "5");
 
     // the max client cache number per each host
     // There are variety of client cache in BE, but currently we use the

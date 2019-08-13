@@ -23,7 +23,7 @@
 
 #include "common/status.h"
 #include "olap/column_block.h"
-#include "olap/schema2.h"
+#include "olap/schema.h"
 #include "olap/types.h"
 
 namespace doris {
@@ -36,7 +36,7 @@ class RowCursor;
 // in block, however it is used by old code, which we don't want to change.
 class RowBlockV2 {
 public:
-    RowBlockV2(const SchemaV2& schema, uint16_t capacity, Arena* arena);
+    RowBlockV2(const Schema& schema, uint16_t capacity, Arena* arena);
     ~RowBlockV2();
 
     void resize(size_t num_rows) { _num_rows = num_rows; }
@@ -52,7 +52,7 @@ public:
     // Get column block for input column index. This input is the index in
     // this row block, is not the index in table's schema
     ColumnBlock column_block(size_t col_idx) const {
-        const TypeInfo* type_info = _schema.column(col_idx).type_info();
+        const TypeInfo* type_info = _schema.column(col_idx)->type_info();
         uint8_t* data = _column_datas[col_idx];
         uint8_t* null_bitmap = _column_null_bitmaps[col_idx];
         return ColumnBlock(type_info, data, null_bitmap, _arena);
@@ -60,10 +60,10 @@ public:
 
     RowBlockRow row(size_t row_idx) const;
 
-    const SchemaV2& schema() const { return _schema; }
+    const Schema* schema() const { return &_schema; }
 
 private:
-    SchemaV2 _schema;
+    Schema _schema;
     std::vector<uint8_t*> _column_datas;
     std::vector<uint8_t*> _column_null_bitmaps;
     size_t _capacity;
@@ -95,16 +95,17 @@ public:
     const uint8_t* cell_ptr(size_t col_idx) const {
         return column_block(col_idx).cell_ptr(_row_index);
     }
-    const SchemaV2& schema() const { return _block->schema(); }
+    const Schema* schema() const { return _block->schema(); }
 
     std::string debug_string() const;
+
+    ColumnBlockCell cell(uint32_t cid) const {
+        return column_block(cid).cell(_row_index);
+    }
 private:
     const RowBlockV2* _block;
     size_t _row_index;
 };
-
-// Deep copy src row to dst row. Schema of src and dst row must be same.
-void copy_row(RowBlockRow* dst, const RowBlockRow& src, Arena* arena);
 
 inline RowBlockRow RowBlockV2::row(size_t row_idx) const {
     return RowBlockRow(this, row_idx);

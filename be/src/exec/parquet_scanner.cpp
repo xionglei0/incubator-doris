@@ -112,8 +112,11 @@ Status ParquetScanner::open_next_reader() {
                 break;
             }
             case TFileType::FILE_BROKER: {
+                int64_t file_size = 0;
+                // for compatibility
+                if (range.__isset.file_size) { file_size = range.file_size; }
                 file_reader.reset(new BrokerReader(_state->exec_env(), _broker_addresses, _params.properties,
-                                               range.path, range.start_offset));
+                                               range.path, range.start_offset, file_size));
                 break;
             }
 #if 0
@@ -139,7 +142,12 @@ Status ParquetScanner::open_next_reader() {
             continue;
         }
         _cur_file_reader = new ParquetReaderWrap(file_reader.release());
-        return _cur_file_reader->init_parquet_reader(_src_slot_descs);
+        Status status = _cur_file_reader->init_parquet_reader(_src_slot_descs);
+        if (status.is_end_of_file()) {
+            continue;
+        } else {
+            return status;
+        }
     }
 }
 

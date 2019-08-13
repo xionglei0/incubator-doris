@@ -317,7 +317,7 @@ public class FrontendServiceImpl implements FrontendService.Iface {
 
     @Override
     public TReportExecStatusResult reportExecStatus(TReportExecStatusParams params) throws TException {
-        return QeProcessorImpl.INSTANCE.reportExecStatus(params);
+        return QeProcessorImpl.INSTANCE.reportExecStatus(params, getClientAddr());
     }
 
     @Override
@@ -810,8 +810,9 @@ public class FrontendServiceImpl implements FrontendService.Iface {
             if (!(table instanceof OlapTable)) {
                 throw new UserException("load table type is not OlapTable, type=" + table.getClass());
             }
-            StreamLoadPlanner planner = new StreamLoadPlanner(db, (OlapTable) table, StreamLoadTask.fromTStreamLoadPutRequest(request));
-            return planner.plan();
+            StreamLoadTask streamLoadTask = StreamLoadTask.fromTStreamLoadPutRequest(request);
+            StreamLoadPlanner planner = new StreamLoadPlanner(db, (OlapTable) table, streamLoadTask);
+            return planner.plan(streamLoadTask.getId());
         } finally {
             db.readUnlock();
         }

@@ -20,6 +20,7 @@
 #include "olap/rowset/alpha_rowset_writer.h"
 #include "olap/rowset/alpha_rowset_meta.h"
 #include "olap/rowset/rowset_meta_manager.h"
+#include "olap/row.h"
 
 namespace doris {
 
@@ -37,7 +38,7 @@ AlphaRowsetWriter::AlphaRowsetWriter() :
 AlphaRowsetWriter::~AlphaRowsetWriter() {
     SAFE_DELETE(_column_data_writer);
     if (!_rowset_build) {
-        garbage_collection();
+        _garbage_collection();
     }
     for (auto& segment_group : _segment_groups) {
         segment_group->release();
@@ -72,7 +73,8 @@ OLAPStatus AlphaRowsetWriter::init(const RowsetWriterContext& rowset_writer_cont
     return OLAP_SUCCESS;
 }
 
-OLAPStatus AlphaRowsetWriter::add_row(RowCursor* row) {
+template<typename RowType>
+OLAPStatus AlphaRowsetWriter::_add_row(const RowType& row) {
     if (_writer_state != WRITER_INITED) {
         RETURN_NOT_OK(_init());
     }
@@ -82,29 +84,16 @@ OLAPStatus AlphaRowsetWriter::add_row(RowCursor* row) {
         LOG(WARNING) << error_msg;
         return status;
     }
-    _num_rows_written++;
-    return OLAP_SUCCESS;
-}
-
-OLAPStatus AlphaRowsetWriter::add_row(const char* row, Schema* schema) {
-    if (_writer_state != WRITER_INITED) {
-        RETURN_NOT_OK(_init());
-    }
-    OLAPStatus status = _column_data_writer->write(row, schema);
-    if (status != OLAP_SUCCESS) {
-        std::string error_msg = "add row failed";
-        LOG(WARNING) << error_msg;
-        return status;
-    }
     ++_num_rows_written;
     return OLAP_SUCCESS;
 }
 
+template OLAPStatus AlphaRowsetWriter::_add_row(const RowCursor& row);
+template OLAPStatus AlphaRowsetWriter::_add_row(const ContiguousRow& row);
+
 OLAPStatus AlphaRowsetWriter::add_rowset(RowsetSharedPtr rowset) {
     _need_column_data_writer = false;
-    // this api is for LinkedSchemaChange
-    // use create hard link to copy rowset for performance
-    // this is feasible because LinkedSchemaChange is done on the same disk
+    // this api is for clone
     AlphaRowsetSharedPtr alpha_rowset = std::dynamic_pointer_cast<AlphaRowset>(rowset);
     for (auto& segment_group : alpha_rowset->_segment_groups) {
         RETURN_NOT_OK(_init());
@@ -115,14 +104,11 @@ OLAPStatus AlphaRowsetWriter::add_rowset(RowsetSharedPtr rowset) {
         _cur_segment_group->add_zone_maps(segment_group->get_zone_maps());
         RETURN_NOT_OK(flush());
         _num_rows_written += segment_group->num_rows();
-        // Add log to trace rowset validation failure problem
-        // This log will be deleted in the future
-        LOG(INFO) << "add rowset's segment group:" << segment_group->rowset_path_prefix()
-                << ", num_rows:" << segment_group->num_rows();
     }
-    // Add log to trace rowset validation failure problem
-    // This log will be deleted in the future
-    LOG(INFO) << "clone add_rowset:" << _num_rows_written << ", rowset path:" << alpha_rowset->rowset_path();
+    // process delete predicate
+    if (rowset->rowset_meta()->has_delete_predicate()) {
+        _current_rowset_meta->set_delete_predicate(rowset->rowset_meta()->delete_predicate());
+    }
     return OLAP_SUCCESS;
 }
 
@@ -166,6 +152,7 @@ RowsetSharedPtr AlphaRowsetWriter::build() {
         LOG(WARNING) << "invalid writer state before build, state:" << _writer_state;
         return nullptr;
     }
+    int total_num_segments = 0;
     for (auto& segment_group : _segment_groups) {
         if (segment_group->load() != OLAP_SUCCESS) {
             return nullptr;
@@ -180,6 +167,7 @@ RowsetSharedPtr AlphaRowsetWriter::build() {
         SegmentGroupPB segment_group_pb;
         segment_group_pb.set_segment_group_id(segment_group->segment_group_id());
         segment_group_pb.set_num_segments(segment_group->num_segments());
+        total_num_segments += segment_group->num_segments();
         segment_group_pb.set_index_size(segment_group->index_size());
         segment_group_pb.set_data_size(segment_group->data_size());
         segment_group_pb.set_num_rows(segment_group->num_rows());
@@ -202,6 +190,7 @@ RowsetSharedPtr AlphaRowsetWriter::build() {
             = std::dynamic_pointer_cast<AlphaRowsetMeta>(_current_rowset_meta);
         alpha_rowset_meta->add_segment_group(segment_group_pb);
     }
+    _current_rowset_meta->set_num_segments(total_num_segments);
     if (_is_pending_rowset) {
         _current_rowset_meta->set_rowset_state(COMMITTED);
     } else {
@@ -233,37 +222,17 @@ RowsetSharedPtr AlphaRowsetWriter::build() {
     return rowset;
 }
 
-MemPool* AlphaRowsetWriter::mem_pool() {
-    if (_column_data_writer != nullptr) {
-        return _column_data_writer->mem_pool();
-    } else {
-        return nullptr;
-    }
-}
-
-Version AlphaRowsetWriter::version() {
-    return _rowset_writer_context.version;
-}
-
-int32_t AlphaRowsetWriter::num_rows() {
-    return _num_rows_written;
-}
-
-OLAPStatus AlphaRowsetWriter::garbage_collection() {
+OLAPStatus AlphaRowsetWriter::_garbage_collection() {
     for (auto& segment_group : _segment_groups) {
         bool ret = segment_group->delete_all_files();
         if (!ret) {
             LOG(WARNING) << "delete segment group files failed."
                          << " tablet id:" << segment_group->get_tablet_id()
                          << ", rowset path:" << segment_group->rowset_path_prefix();
-            return OLAP_ERR_ROWSET_DELETE_SEGMENT_GROUP_FILE_FAILED;
+            return OLAP_ERR_ROWSET_DELETE_FILE_FAILED;
         }
     }
     return OLAP_SUCCESS;
-}
-
-DataDir* AlphaRowsetWriter::data_dir() {
-    return _rowset_writer_context.data_dir;
 }
 
 OLAPStatus AlphaRowsetWriter::_init() {
@@ -324,16 +293,9 @@ bool AlphaRowsetWriter::_validate_rowset() {
         num_rows += segment_group->num_rows();
     }
     if (num_rows != _current_rowset_meta->num_rows()) {
-        // Add log to trace rowset validation failure problem
-        // This log will be deleted in the future
-        std::stringstream ss;
-        for (auto& segment_group : _segment_groups) {
-            ss << segment_group->rowset_path_prefix() << ",";
-        }
         LOG(WARNING) << "num_rows between rowset and segment_groups do not match. "
                      << "num_rows of segment_groups:" << num_rows
-                     << ", num_rows of rowset:" << _current_rowset_meta->num_rows()
-                     << ", own segment group path:" << ss.str();
+                     << ", num_rows of rowset:" << _current_rowset_meta->num_rows();
 
         return false;
     }

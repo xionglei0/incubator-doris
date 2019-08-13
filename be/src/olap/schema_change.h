@@ -73,23 +73,6 @@ private:
     DISALLOW_COPY_AND_ASSIGN(RowBlockChanger);
 };
 
-class RowBlockAllocator;
-class RowBlockSorter {
-public:
-    explicit RowBlockSorter(RowBlockAllocator* allocator);
-    virtual ~RowBlockSorter();
-
-    bool sort(RowBlock** row_block);
-
-private:
-    static bool _row_cursor_comparator(const RowCursor* a, const RowCursor* b) {
-        return a->full_key_cmp(*b) < 0;
-    }
-
-    RowBlockAllocator* _row_block_allocator;
-    RowBlock* _swap_row_block;
-};
-
 class RowBlockAllocator {
 public:
     RowBlockAllocator(const TabletSchema& tablet_schema, size_t memory_limitation);
@@ -104,34 +87,6 @@ private:
     size_t _memory_allocated;
     size_t _row_len;
     size_t _memory_limitation;
-};
-
-class RowBlockMerger {
-public:
-    explicit RowBlockMerger(TabletSharedPtr tablet);
-    virtual ~RowBlockMerger();
-
-    bool merge(
-            const std::vector<RowBlock*>& row_block_arr,
-            RowsetWriterSharedPtr rowset_writer,
-            uint64_t* merged_rows);
-
-private:
-    struct MergeElement {
-        bool operator<(const MergeElement& other) const {
-            return row_cursor->full_key_cmp(*(other.row_cursor)) > 0;
-        }
-
-        const RowBlock* row_block;
-        RowCursor* row_cursor;
-        uint32_t row_block_index;
-    };
-
-    bool _make_heap(const std::vector<RowBlock*>& row_block_arr);
-    bool _pop_heap();
-
-    TabletSharedPtr _tablet;
-    std::priority_queue<MergeElement> _heap;
 };
 
 class SchemaChange {
@@ -205,10 +160,9 @@ public:
 private:
     const RowBlockChanger& _row_block_changer;
     RowBlockAllocator* _row_block_allocator;
-    RowCursor* _src_cursor;
-    RowCursor* _dst_cursor;
+    RowCursor* _cursor;
 
-    bool _write_row_block(RowsetWriterSharedPtr rowset_builder, RowBlock* row_block);
+    bool _write_row_block(RowsetWriter* rowset_builder, RowBlock* row_block);
 
     DISALLOW_COPY_AND_ASSIGN(SchemaChangeDirectly);
 };
