@@ -156,6 +156,8 @@ ${DORIS_TEST_BINARY_DIR}/util/coding_test
 ${DORIS_TEST_BINARY_DIR}/util/faststring_test
 ${DORIS_TEST_BINARY_DIR}/util/tdigest_test
 ${DORIS_TEST_BINARY_DIR}/util/block_compression_test
+${DORIS_TEST_BINARY_DIR}/util/arrow/arrow_row_block_test
+${DORIS_TEST_BINARY_DIR}/util/arrow/arrow_row_batch_test
 
 # Running common Unittest
 ${DORIS_TEST_BINARY_DIR}/common/resource_tls_test
@@ -165,6 +167,7 @@ ${DORIS_TEST_BINARY_DIR}/exprs/string_functions_test
 ${DORIS_TEST_BINARY_DIR}/exprs/json_function_test
 ${DORIS_TEST_BINARY_DIR}/exprs/timestamp_functions_test
 ${DORIS_TEST_BINARY_DIR}/exprs/percentile_approx_test
+${DORIS_TEST_BINARY_DIR}/exprs/bitmap_function_test
 
 ## Running geo unit test
 ${DORIS_TEST_BINARY_DIR}/geo/geo_functions_test
@@ -254,6 +257,9 @@ ${DORIS_TEST_BINARY_DIR}/olap/rowset/segment_v2/column_reader_writer_test
 ${DORIS_TEST_BINARY_DIR}/olap/rowset/segment_v2/rle_page_test
 ${DORIS_TEST_BINARY_DIR}/olap/rowset/segment_v2/binary_dict_page_test
 ${DORIS_TEST_BINARY_DIR}/olap/rowset/segment_v2/segment_test
+${DORIS_TEST_BINARY_DIR}/olap/rowset/segment_v2/page_compression_test
+${DORIS_TEST_BINARY_DIR}/olap/rowset/segment_v2/column_zone_map_test
+${DORIS_TEST_BINARY_DIR}/olap/rowset/segment_v2/row_ranges_test
 ${DORIS_TEST_BINARY_DIR}/olap/txn_manager_test
 ${DORIS_TEST_BINARY_DIR}/olap/storage_types_test
 ${DORIS_TEST_BINARY_DIR}/olap/generic_iterators_test

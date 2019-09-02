@@ -26,8 +26,6 @@
 #include <string.h>
 #include <string>
 
-#include "olap/olap_define.h"
-
 namespace doris {
 
 class faststring;
@@ -184,6 +182,14 @@ public:
             total_size += slice.size;
         }
         return total_size;
+    }
+
+    static std::string to_string(const std::vector<Slice>& slices) {
+        std::string buf;
+        for (auto& slice : slices) {
+            buf.append(slice.data, slice.size);
+        }
+        return buf;
     }
 
 };

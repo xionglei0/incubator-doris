@@ -23,6 +23,7 @@
 #include "olap/row_cursor.h" // RowCursor
 #include "olap/rowset/segment_v2/column_writer.h" // ColumnWriter
 #include "olap/short_key_index.h"
+#include "util/hash_util.hpp"
 
 namespace doris {
 namespace segment_v2 {
@@ -63,6 +64,11 @@ Status SegmentWriter::init(uint32_t write_mbytes_per_sec) {
         DCHECK(type_info != nullptr);
 
         ColumnWriterOptions opts;
+        opts.compression_type = segment_v2::CompressionTypePB::LZ4F;
+        // now we create zone map for key columns
+        if (column.is_key()) {
+            opts.need_zone_map = true;
+        }
         std::unique_ptr<ColumnWriter> writer(new ColumnWriter(opts, type_info, is_nullable, _output_file.get()));
         RETURN_IF_ERROR(writer->init());
         _column_writers.push_back(writer.release());
@@ -102,6 +108,7 @@ Status SegmentWriter::finalize(uint32_t* segment_file_size) {
     RETURN_IF_ERROR(_write_raw_data({k_segment_magic}));
     RETURN_IF_ERROR(_write_data());
     RETURN_IF_ERROR(_write_ordinal_index());
+    RETURN_IF_ERROR(_write_zone_map());
     RETURN_IF_ERROR(_write_short_key_index());
     RETURN_IF_ERROR(_write_footer());
     return Status::OK();
@@ -119,6 +126,13 @@ Status SegmentWriter::_write_data() {
 Status SegmentWriter::_write_ordinal_index() {
     for (auto column_writer : _column_writers) {
         RETURN_IF_ERROR(column_writer->write_ordinal_index());
+    }
+    return Status::OK();
+}
+
+Status SegmentWriter::_write_zone_map() {
+    for (auto column_writer : _column_writers) {
+        RETURN_IF_ERROR(column_writer->write_zone_map());
     }
     return Status::OK();
 }
@@ -153,8 +167,8 @@ Status SegmentWriter::_write_footer() {
     std::string footer_info_buf;
     // put footer's size
     put_fixed32_le(&footer_info_buf, footer_buf.size());
-    // TODO(zc): compute checksum for footer
-    uint32_t checksum = 0;
+    // compute footer's checksum
+    uint32_t checksum = HashUtil::crc_hash(footer_buf.data(), footer_buf.size(), 0);
     put_fixed32_le(&footer_info_buf, checksum);
 
     // I think we don't need to put a tail magic.

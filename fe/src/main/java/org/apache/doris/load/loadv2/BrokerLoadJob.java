@@ -63,6 +63,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * There are 3 steps in BrokerLoadJob: BrokerPendingTask, LoadLoadingTask, CommitAndPublishTxn.
@@ -187,7 +188,7 @@ public class BrokerLoadJob extends LoadJob {
     @Override
     public void beginTxn() throws LabelAlreadyUsedException, BeginTransactionException, AnalysisException {
         transactionId = Catalog.getCurrentGlobalTransactionMgr()
-                .beginTransaction(dbId, label, -1, "FE: " + FrontendOptions.getLocalHostAddress(),
+                .beginTransaction(dbId, label, null, "FE: " + FrontendOptions.getLocalHostAddress(),
                                   TransactionState.LoadJobSourceType.BATCH_LOAD_JOB, id,
                                   timeoutSecond);
     }
@@ -237,8 +238,14 @@ public class BrokerLoadJob extends LoadJob {
             } else {
                 // retry task
                 idToTasks.remove(loadTask.getSignature());
+                if (loadTask instanceof LoadLoadingTask) {
+                    loadStatistic.numLoadedRowsMap.remove(((LoadLoadingTask) loadTask).getLoadId());
+                }
                 loadTask.updateRetryInfo();
                 idToTasks.put(loadTask.getSignature(), loadTask);
+                if (loadTask instanceof LoadLoadingTask) {
+                    loadStatistic.numLoadedRowsMap.put(((LoadLoadingTask) loadTask).getLoadId(), new AtomicLong(0));
+                }
                 Catalog.getCurrentCatalog().getLoadTaskScheduler().submit(loadTask);
                 return;
             }
@@ -356,6 +363,7 @@ public class BrokerLoadJob extends LoadJob {
                           attachment.getFileNumByTable(tableId));
                 // Add tasks into list and pool
                 idToTasks.put(task.getSignature(), task);
+                loadStatistic.numLoadedRowsMap.put(loadId, new AtomicLong(0));
                 Catalog.getCurrentCatalog().getLoadTaskScheduler().submit(task);
             }
         } finally {
@@ -492,6 +500,8 @@ public class BrokerLoadJob extends LoadJob {
     public void readFields(DataInput in) throws IOException {
         super.readFields(in);
         brokerDesc = BrokerDesc.read(in);
+        // The data source info also need to be replayed
+        // because the load properties of old broker load has been saved in here.
         dataSourceInfo.readFields(in);
 
         if (Catalog.getCurrentCatalogJournalVersion() >= FeMetaVersion.VERSION_58) {

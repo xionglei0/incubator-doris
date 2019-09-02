@@ -45,8 +45,8 @@ import org.apache.doris.planner.Planner;
 import org.apache.doris.planner.ResultSink;
 import org.apache.doris.planner.ScanNode;
 import org.apache.doris.planner.UnionNode;
-import org.apache.doris.proto.PPlanFragmentCancelReason;
 import org.apache.doris.proto.PExecPlanFragmentResult;
+import org.apache.doris.proto.PPlanFragmentCancelReason;
 import org.apache.doris.rpc.BackendServiceProxy;
 import org.apache.doris.rpc.RpcException;
 import org.apache.doris.service.FrontendOptions;
@@ -85,6 +85,8 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.thrift.TException;
 
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
@@ -104,6 +106,8 @@ import java.util.concurrent.locks.ReentrantLock;
 
 public class Coordinator {
     private static final Logger LOG = LogManager.getLogger(Coordinator.class);
+
+    private static final DateFormat DATE_FORMAT = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
 
     private static String localIP = FrontendOptions.getLocalHostAddress();
 
@@ -190,7 +194,8 @@ public class Coordinator {
         this.descTable = analyzer.getDescTbl().toThrift();
         this.returnedAllResults = false;
         this.queryOptions = context.getSessionVariable().toThrift();
-        this.queryGlobals.setNow_string(String.valueOf(new Date().getTime()));
+        this.queryGlobals.setNow_string(DATE_FORMAT.format(new Date()));
+        this.queryGlobals.setTimestamp_ms(new Date().getTime());
         if (context.getSessionVariable().getTimeZone().equals("CST")) {
             this.queryGlobals.setTime_zone(TimeUtils.DEFAULT_TIME_ZONE);                      
         } else {
@@ -205,7 +210,7 @@ public class Coordinator {
         nextInstanceId.setLo(queryId.lo + 1);
     }
 
-    // Used for pull load task coordinator
+    // Used for broker load task/export task coordinator
     public Coordinator(Long jobId, TUniqueId queryId, DescriptorTable descTable,
             List<PlanFragment> fragments, List<ScanNode> scanNodes, String cluster) {
         this.isBlockQuery = true;
@@ -215,7 +220,8 @@ public class Coordinator {
         this.fragments = fragments;
         this.scanNodes = scanNodes;
         this.queryOptions = new TQueryOptions();
-        this.queryGlobals.setNow_string(String.valueOf(new Date().getTime()));
+        this.queryGlobals.setNow_string(DATE_FORMAT.format(new Date()));
+        this.queryGlobals.setTimestamp_ms(new Date().getTime());
         this.queryGlobals.setTime_zone(TimeUtils.DEFAULT_TIME_ZONE);                      
         this.tResourceInfo = new TResourceInfo("", "");
         this.needReport = true;
@@ -1099,7 +1105,9 @@ public class Coordinator {
                 // duplicate packet
                 return;
             }
-            execState.profile.update(params.profile);
+            if (params.isSetProfile()) {
+                execState.profile.update(params.profile);
+            }
             done = params.done;
             execState.done = params.done;
         } finally {
@@ -1142,6 +1150,10 @@ public class Coordinator {
                 updateCommitInfos(params.getCommitInfos());
             }
             profileDoneSignal.markedCountDown(params.getFragment_instance_id(), -1L);
+        } 
+
+        if (params.isSetLoaded_rows()) {
+            Catalog.getCurrentCatalog().getLoadManager().updateJobLoadedRows(jobId, params.query_id, params.loaded_rows);
         }
 
         return;

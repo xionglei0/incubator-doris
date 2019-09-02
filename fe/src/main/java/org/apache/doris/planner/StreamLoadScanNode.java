@@ -118,6 +118,7 @@ public class StreamLoadScanNode extends ScanNode {
         srcTupleDesc = analyzer.getDescTbl().createTupleDescriptor("StreamLoadScanNode");
 
         TBrokerScanRangeParams params = new TBrokerScanRangeParams();
+        params.setStrict_mode(streamLoadTask.isStrictMode());
 
         // parse columns header. this contain map from input column to column of destination table
         // columns: k1, k2, v1, v2=k1 + k2
@@ -255,7 +256,7 @@ public class StreamLoadScanNode extends ScanNode {
             if (expr == null) {
                 SlotDescriptor srcSlotDesc = slotDescByName.get(dstSlotDesc.getColumn().getName());
                 if (srcSlotDesc != null) {
-                    destSidToSrcSidWithoutTrans.put(srcSlotDesc.getId().asInt(), dstSlotDesc.getId().asInt());
+                    destSidToSrcSidWithoutTrans.put(dstSlotDesc.getId().asInt(), srcSlotDesc.getId().asInt());
                     // If dest is allow null, we set source to nullable
                     if (dstSlotDesc.getColumn().isAllowNull()) {
                         srcSlotDesc.setIsNullable(true);
@@ -287,6 +288,9 @@ public class StreamLoadScanNode extends ScanNode {
                 }
                 expr.setType(Type.HLL);
             }
+
+            checkBitmapCompatibility(dstSlotDesc, expr);
+
             if (negative && dstSlotDesc.getColumn().getAggregationType() == AggregateType.SUM) {
                 expr = new ArithmeticExpr(ArithmeticExpr.Operator.MULTIPLY, expr, new IntLiteral(-1));
                 expr.analyze(analyzer);

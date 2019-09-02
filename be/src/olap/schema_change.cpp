@@ -568,6 +568,7 @@ bool RowBlockMerger::merge(
         uint64_t* merged_rows) {
     uint64_t tmp_merged_rows = 0;
     RowCursor row_cursor;
+    std::unique_ptr<Arena> arena(new Arena());
     if (row_cursor.init(_tablet->tablet_schema()) != OLAP_SUCCESS) {
         LOG(WARNING) << "fail to init row cursor.";
         goto MERGE_ERR;
@@ -577,7 +578,7 @@ bool RowBlockMerger::merge(
 
     row_cursor.allocate_memory_for_string_type(_tablet->tablet_schema());
     while (_heap.size() > 0) {
-        init_row_with_others(&row_cursor, *(_heap.top().row_cursor));
+        init_row_with_others(&row_cursor, *(_heap.top().row_cursor), arena.get());
 
         if (!_pop_heap()) {
             goto MERGE_ERR;
@@ -597,6 +598,10 @@ bool RowBlockMerger::merge(
         }
         agg_finalize_row(&row_cursor, nullptr);
         rowset_writer->add_row(row_cursor);
+
+        // the memory allocate by arena has been copied,
+        // so we should release these memory immediately
+        arena.reset(new Arena());
     }
     if (rowset_writer->flush() != OLAP_SUCCESS) {
         LOG(WARNING) << "failed to finalizing writer.";
@@ -1108,8 +1113,8 @@ bool SchemaChangeWithSorting::_external_sorting(
         TabletSharedPtr new_tablet) {
     Merger merger(new_tablet, rowset_writer, READER_ALTER_TABLE);
 
-    uint64_t merged_rows = 0;
-    uint64_t filtered_rows = 0;
+    int64_t merged_rows = 0;
+    int64_t filtered_rows = 0;
     vector<RowsetReaderSharedPtr> rs_readers;
     for (vector<RowsetSharedPtr>::iterator it = src_rowsets.begin();
             it != src_rowsets.end(); ++it) {
@@ -1248,7 +1253,7 @@ OLAPStatus SchemaChangeHandler::_do_process_alter_tablet_v2(const TAlterTabletRe
         new_tablet->modify_rowsets(std::vector<RowsetSharedPtr>(), rowsets_to_delete);
         // inherit cumulative_layer_point from base_tablet
         // check if new_tablet.ce_point > base_tablet.ce_point?
-        new_tablet->set_cumulative_layer_point(base_tablet->cumulative_layer_point());
+        new_tablet->set_cumulative_layer_point(-1);
         // save tablet meta
         res = new_tablet->save_meta();
         if (res != OLAP_SUCCESS) {
@@ -1289,10 +1294,8 @@ OLAPStatus SchemaChangeHandler::_do_process_alter_tablet_v2(const TAlterTabletRe
 
         _reader_context.reader_type = READER_ALTER_TABLE;
         _reader_context.tablet_schema= &base_tablet->tablet_schema();
-        _reader_context.preaggregation = true;
+        _reader_context.need_ordered_result = true;
         _reader_context.delete_handler = &delete_handler;
-        _reader_context.is_using_cache = false;
-        _reader_context.lru_cache = StorageEngine::instance()->index_stream_lru_cache();
 
         for (auto& rs_reader : rs_readers) {
             rs_reader->init(&_reader_context);
@@ -1519,7 +1522,7 @@ OLAPStatus SchemaChangeHandler::process_alter_tablet(AlterTabletType type,
         }
 
         // inherit cumulative_layer_point from base_tablet
-        new_tablet->set_cumulative_layer_point(base_tablet->cumulative_layer_point());
+        new_tablet->set_cumulative_layer_point(-1);
 
         // get history versions to be changed
         res = _get_versions_to_be_changed(base_tablet, &versions_to_be_changed);
@@ -1558,10 +1561,8 @@ OLAPStatus SchemaChangeHandler::process_alter_tablet(AlterTabletType type,
 
         _reader_context.reader_type = READER_ALTER_TABLE;
         _reader_context.tablet_schema= &base_tablet->tablet_schema();
-        _reader_context.preaggregation = true;
+        _reader_context.need_ordered_result = true;
         _reader_context.delete_handler = &delete_handler;
-        _reader_context.is_using_cache = false;
-        _reader_context.lru_cache = StorageEngine::instance()->index_stream_lru_cache();
 
         for (auto& rs_reader : rs_readers) {
             rs_reader->init(&_reader_context);
@@ -1660,10 +1661,8 @@ OLAPStatus SchemaChangeHandler::schema_version_convert(
     DeleteHandler delete_handler;
     _reader_context.reader_type = READER_ALTER_TABLE;
     _reader_context.tablet_schema = &base_tablet->tablet_schema();
-    _reader_context.preaggregation = true;
+    _reader_context.need_ordered_result = true;
     _reader_context.delete_handler = &delete_handler;
-    _reader_context.is_using_cache = false;
-    _reader_context.lru_cache = StorageEngine::instance()->index_stream_lru_cache();
 
     RowsetReaderSharedPtr rowset_reader = (*base_rowset)->create_reader();
     rowset_reader->init(&_reader_context);
@@ -1892,7 +1891,6 @@ OLAPStatus SchemaChangeHandler::_convert_historical_rowsets(const SchemaChangePa
         // set status for monitor
         // 只要有一个new_table为running，ref table就设置为running
         // NOTE 如果第一个sub_table先fail，这里会继续按正常走
-
         RowsetId rowset_id = 0;
         TabletSharedPtr new_tablet = sc_params.new_tablet;
         res = sc_params.new_tablet->next_rowset_id(&rowset_id);

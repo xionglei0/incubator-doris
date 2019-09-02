@@ -76,17 +76,12 @@ public:
             RuntimeState* runtime_state);
 
     OLAPStatus get_first_row_block(RowBlock** row_block);
-    OLAPStatus get_next_row_block(RowBlock** row_block);
 
     // Only used to binary search in full-key find row
     const RowCursor* seek_and_get_current_row(const RowBlockPosition& position);
 
     void set_using_cache(bool is_using_cache) {
         _is_using_cache = is_using_cache;
-    }
-
-    void set_lru_cache(Cache* lru_cache) {
-        _lru_cache = lru_cache;
     }
 
     void set_stats(OlapReaderStatistics* stats) {

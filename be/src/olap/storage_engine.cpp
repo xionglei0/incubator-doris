@@ -231,7 +231,6 @@ void StorageEngine::_update_storage_medium_type_count() {
     }
 }
 
-
 OLAPStatus StorageEngine::_judge_and_update_effective_cluster_id(int32_t cluster_id) {
     OLAPStatus res = OLAP_SUCCESS;
 
@@ -265,16 +264,6 @@ void StorageEngine::set_store_used_flag(const string& path, bool is_used) {
     _update_storage_medium_type_count();
 }
 
-void StorageEngine::get_all_available_root_path(std::vector<std::string>* available_paths) {
-    available_paths->clear();
-    std::lock_guard<std::mutex> l(_store_lock);
-    for (auto& it : _store_map) {
-        if (it.second->is_used()) {
-            available_paths->push_back(it.first);
-        }
-    }
-}
-
 template<bool include_unused>
 std::vector<DataDir*> StorageEngine::get_stores() {
     std::vector<DataDir*> stores;
@@ -298,7 +287,7 @@ std::vector<DataDir*> StorageEngine::get_stores() {
 template std::vector<DataDir*> StorageEngine::get_stores<false>();
 template std::vector<DataDir*> StorageEngine::get_stores<true>();
 
-OLAPStatus StorageEngine::get_all_data_dir_info(vector<DataDirInfo>* data_dir_infos) {
+OLAPStatus StorageEngine::get_all_data_dir_info(vector<DataDirInfo>* data_dir_infos, bool need_update) {
     OLAPStatus res = OLAP_SUCCESS;
     data_dir_infos->clear();
 
@@ -306,28 +295,21 @@ OLAPStatus StorageEngine::get_all_data_dir_info(vector<DataDirInfo>* data_dir_in
     timer.start();
     int tablet_counter = 0;
 
+    // 1. update avaiable capacity of each data dir
     // get all root path info and construct a path map.
     // path -> DataDirInfo
     std::map<std::string, DataDirInfo> path_map;
     {
         std::lock_guard<std::mutex> l(_store_lock);
         for (auto& it : _store_map) {
-            std::string path = it.first;
-            path_map.emplace(path, it.second->get_dir_info());
-            // if this path is not used, init it's info
-            if (!path_map[path].is_used) {
-                path_map[path].capacity = 1;
-                path_map[path].data_used_capacity = 0;
-                path_map[path].available = 0;
-                path_map[path].storage_medium = TStorageMedium::HDD;
-            } else {
-                path_map[path].storage_medium = it.second->storage_medium();
+            if (need_update) {
+                it.second->update_capacity();
             }
+            path_map.emplace(it.first, it.second->get_dir_info());
         }
     }
 
-    // for each tablet, get it's data size, and accumulate the path 'data_used_capacity'
-    // which the tablet belongs to.
+    // 2. get total tablets' size of each data dir
     _tablet_manager->update_root_path_info(&path_map, &tablet_counter);
 
     // add path info to data_dir_infos
@@ -335,12 +317,6 @@ OLAPStatus StorageEngine::get_all_data_dir_info(vector<DataDirInfo>* data_dir_in
         data_dir_infos->emplace_back(entry.second);
     }
 
-    // get available capacity of each path
-    for (auto& info: *data_dir_infos) {
-        if (info.is_used) {
-            _get_path_available_capacity(info.path,  &info.available);
-        }
-    }
     timer.stop();
     LOG(INFO) << "get root path info cost: " << timer.elapsed_time() / 1000000
             << " ms. tablet counter: " << tablet_counter;
@@ -440,7 +416,7 @@ std::vector<DataDir*> StorageEngine::get_stores_for_create_tablet(
 }
 
 DataDir* StorageEngine::get_store(const std::string& path) {
-    std::lock_guard<std::mutex> l(_store_lock);
+    // _store_map is unchanged, no need to lock
     auto it = _store_map.find(path);
     if (it == std::end(_store_map)) {
         return nullptr;
@@ -479,23 +455,6 @@ void StorageEngine::_delete_tablets_on_unused_root_path() {
     }
     
     _tablet_manager->drop_tablets_on_error_root_path(tablet_info_vec);
-}
-
-OLAPStatus StorageEngine::_get_path_available_capacity(
-        const string& root_path,
-        int64_t* disk_available) {
-    OLAPStatus res = OLAP_SUCCESS;
-
-    try {
-        boost::filesystem::path path_name(root_path);
-        boost::filesystem::space_info path_info = boost::filesystem::space(path_name);
-        *disk_available = path_info.available;
-    } catch (boost::filesystem::filesystem_error& e) {
-        LOG(WARNING) << "get space info failed. path: " << root_path << " erro:" << e.what();
-        return OLAP_ERR_STL_ERROR;
-    }
-
-    return res;
 }
 
 OLAPStatus StorageEngine::clear() {
@@ -567,26 +526,13 @@ void StorageEngine::perform_cumulative_compaction(DataDir* data_dir) {
     if (best_tablet == nullptr) { return; }
 
     DorisMetrics::cumulative_compaction_request_total.increment(1);
-    CumulativeCompaction cumulative_compaction;
-    OLAPStatus res = cumulative_compaction.init(best_tablet);
-    if (res != OLAP_SUCCESS) {
-        if (res != OLAP_ERR_CUMULATIVE_REPEAT_INIT && res != OLAP_ERR_CE_TRY_CE_LOCK_ERROR) {
-            best_tablet->set_last_compaction_failure_time(UnixMillis());
-            if (res != OLAP_ERR_CUMULATIVE_NO_SUITABLE_VERSIONS) {
-                LOG(WARNING) << "failed to init cumulative compaction"
-                             << ", table=" << best_tablet->full_name()
-                             << ", res=" << res;
-                DorisMetrics::cumulative_compaction_request_failed.increment(1);
-            }
-        }
-        return;
-    }
+    CumulativeCompaction cumulative_compaction(best_tablet);
 
-    res = cumulative_compaction.run();
+    OLAPStatus res = cumulative_compaction.compact();
     if (res != OLAP_SUCCESS) {
         DorisMetrics::cumulative_compaction_request_failed.increment(1);
         best_tablet->set_last_compaction_failure_time(UnixMillis());
-        LOG(WARNING) << "failed to do cumulative compaction"
+        LOG(WARNING) << "failed to do cumulative compaction. res=" << res
                      << ", table=" << best_tablet->full_name()
                      << ", res=" << res;
         return;
@@ -599,26 +545,13 @@ void StorageEngine::perform_base_compaction(DataDir* data_dir) {
     if (best_tablet == nullptr) { return; }
 
     DorisMetrics::base_compaction_request_total.increment(1);
-    BaseCompaction base_compaction;
-    OLAPStatus res = base_compaction.init(best_tablet);
-    if (res != OLAP_SUCCESS) {
-        if (res != OLAP_ERR_BE_TRY_BE_LOCK_ERROR && res != OLAP_ERR_BE_NO_SUITABLE_VERSION) {
-            DorisMetrics::base_compaction_request_failed.increment(1);
-            best_tablet->set_last_compaction_failure_time(UnixMillis());
-            LOG(WARNING) << "failed to init base compaction"
-                << ", table=" << best_tablet->full_name()
-                << ", res=" << res;
-        }
-        return;
-    }
-
-    res = base_compaction.run();
+    BaseCompaction base_compaction(best_tablet);
+    OLAPStatus res = base_compaction.compact();
     if (res != OLAP_SUCCESS) {
         DorisMetrics::base_compaction_request_failed.increment(1);
         best_tablet->set_last_compaction_failure_time(UnixMillis());
-        LOG(WARNING) << "failed to init base compaction"
-                     << ", table=" << best_tablet->full_name()
-                     << ", res=" << res;
+        LOG(WARNING) << "failed to init base compaction. res=" << res
+                     << ", table=" << best_tablet->full_name();
         return;
     }
     best_tablet->set_last_compaction_failure_time(0);
@@ -632,11 +565,11 @@ OLAPStatus StorageEngine::start_trash_sweep(double* usage) {
     OLAPStatus res = OLAP_SUCCESS;
     LOG(INFO) << "start trash and snapshot sweep.";
 
-    const uint32_t snapshot_expire = config::snapshot_expire_time_sec;
-    const uint32_t trash_expire = config::trash_file_expire_time_sec;
-    const double guard_space = config::disk_capacity_insufficient_percentage / 100.0;
+    const int32_t snapshot_expire = config::snapshot_expire_time_sec;
+    const int32_t trash_expire = config::trash_file_expire_time_sec;
+    const double guard_space = config::storage_flood_stage_usage_percent / 100.0;
     std::vector<DataDirInfo> data_dir_infos;
-    res = get_all_data_dir_info(&data_dir_infos);
+    res = get_all_data_dir_info(&data_dir_infos, false);
     if (res != OLAP_SUCCESS) {
         LOG(WARNING) << "failed to get root path stat info when sweep trash.";
         return res;
@@ -705,7 +638,7 @@ void StorageEngine::_clean_unused_txns() {
 }
 
 OLAPStatus StorageEngine::_do_sweep(
-        const string& scan_root, const time_t& local_now, const uint32_t expire) {
+        const string& scan_root, const time_t& local_now, const int32_t expire) {
     OLAPStatus res = OLAP_SUCCESS;
     if (!check_dir_existed(scan_root)) {
         // dir not existed. no need to sweep trash.
@@ -726,7 +659,17 @@ OLAPStatus StorageEngine::_do_sweep(
                 res = OLAP_ERR_OS_ERROR;
                 continue;
             }
-            if (difftime(local_now, mktime(&local_tm_create)) >= expire) {
+
+            int32_t actual_expire = expire;
+            // try get timeout in dir name, the old snapshot dir does not contain timeout
+            // eg: 20190818221123.3.86400, the 86400 is timeout, in second
+            size_t pos = dir_name.find('.', str_time.size() + 1);
+            if (pos != string::npos) {
+                actual_expire = std::stoi(dir_name.substr(pos + 1));
+            }
+            VLOG(10) << "get actual expire time " << actual_expire << " of dir: " << dir_name;
+
+            if (difftime(local_now, mktime(&local_tm_create)) >= actual_expire) {
                 if (remove_all_dir(path_name) != OLAP_SUCCESS) {
                     LOG(WARNING) << "fail to remove file or directory. path=" << path_name;
                     res = OLAP_ERR_OS_ERROR;

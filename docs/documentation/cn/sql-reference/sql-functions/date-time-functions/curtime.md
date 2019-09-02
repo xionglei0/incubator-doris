@@ -6,7 +6,7 @@
 
 ## Description
 
-获得当前的时间，以TIME类型返回
+鑾峰緱褰撳墠鐨勬椂闂达紝浠IME绫诲瀷杩斿洖
 
 ## Examples
 
@@ -18,3 +18,7 @@ mysql> select current_time();
 | 15:25:47       |
 +----------------+
 ```
+
+## keyword
+
+    CURTIME,CURRENT_TIME

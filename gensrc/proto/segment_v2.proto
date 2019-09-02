@@ -67,9 +67,14 @@ enum CompressionTypePB {
 }
 
 message ZoneMapPB {
+    // minimum not-null value, invalid when all values are null(has_not_null==false)
     optional bytes min = 1;
+    // maximum not-null value, invalid when all values are null (has_not_null==false)
     optional bytes max = 2;
-    optional bool null_flag = 3;
+    // whether the zone has null value
+    optional bool has_null = 3;
+    // whether the zone has not-null value
+    optional bool has_not_null = 4;
 }
 
 message ColumnMetaPB {
@@ -84,10 +89,10 @@ message ColumnMetaPB {
     optional CompressionTypePB compression = 5;
     // if this column can be nullable
     optional bool is_nullable = 6;
-    // if this column has checksum for each page
-    optional bool has_checksum = 7;
     // ordinal index page
-    optional PagePointerPB ordinal_index_page = 8;
+    optional PagePointerPB ordinal_index_page = 7;
+    // zone map page
+    optional PagePointerPB zone_map_page = 8;
 
     // // dictionary page for DICT_ENCODING
     // optional PagePointerPB dict_page = 2;
@@ -143,7 +148,7 @@ message ShortKeyFooterPB {
 message SegmentFooterPB {
     optional uint32 version = 1 [default = 1]; // file version
     repeated ColumnMetaPB columns = 2; // tablet schema
-    optional uint64 num_rows = 3; // number of values
+    optional uint32 num_rows = 3; // number of values
     optional uint64 index_footprint = 4; // total idnex footprint of all columns
     optional uint64 data_footprint = 5; // total data footprint of all columns
     optional uint64 raw_data_footprint = 6; // raw data footprint

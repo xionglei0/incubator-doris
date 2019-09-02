@@ -44,6 +44,7 @@
 #include "olap/olap_meta.h"
 #include "olap/options.h"
 #include "olap/tablet_manager.h"
+#include "olap/tablet_sync_service.h"
 #include "olap/txn_manager.h"
 #include "olap/task/engine_task.h"
 
@@ -119,9 +120,7 @@ public:
     void set_store_used_flag(const std::string& root_path, bool is_used);
 
     // @brief 获取所有root_path信息
-    OLAPStatus get_all_data_dir_info(std::vector<DataDirInfo>* data_dir_infos);
-
-    void get_all_available_root_path(std::vector<std::string>* available_paths);
+    OLAPStatus get_all_data_dir_info(std::vector<DataDirInfo>* data_dir_infos, bool need_update);
 
     // 磁盘状态监测。监测unused_flag路劲新的对应root_path unused标识位，
     // 当检测到有unused标识时，从内存中删除对应表信息，磁盘数据不动。
@@ -194,14 +193,13 @@ public:
 
     bool check_rowset_id_in_unused_rowsets(RowsetId rowset_id);
 
+    // TODO(ygl)
+    TabletSyncService* tablet_sync_service() { return nullptr; }
+
 private:
     OLAPStatus check_all_root_path_cluster_id();
 
     bool _used_disk_not_enough(uint32_t unused_num, uint32_t total_num);
-
-    OLAPStatus _get_path_available_capacity(
-            const std::string& root_path,
-            int64_t* disk_available);
 
     OLAPStatus _config_root_path_unused_flag_file(
             const std::string& root_path,
@@ -218,7 +216,7 @@ private:
     void _clean_unused_txns();
     
     OLAPStatus _do_sweep(
-            const std::string& scan_root, const time_t& local_tm_now, const uint32_t expire);
+            const std::string& scan_root, const time_t& local_tm_now, const int32_t expire);
 
     // Thread functions
     // unused rowset monitor thread

@@ -60,11 +60,14 @@ public:
 
     uint64_t estimate_segment_size();
 
+    uint32_t num_rows_written() { return _row_count; }
+
     Status finalize(uint32_t* segment_file_size);
 
 private:
     Status _write_data();
     Status _write_ordinal_index();
+    Status _write_zone_map();
     Status _write_short_key_index();
     Status _write_footer();
     Status _write_raw_data(const std::vector<Slice>& slices);
@@ -80,7 +83,7 @@ private:
     std::unique_ptr<ShortKeyIndexBuilder> _index_builder;
     std::unique_ptr<WritableFile> _output_file;
     std::vector<ColumnWriter*> _column_writers;
-    uint64_t _row_count = 0;
+    uint32_t _row_count = 0;
     uint32_t _block_count = 0;
 };
 

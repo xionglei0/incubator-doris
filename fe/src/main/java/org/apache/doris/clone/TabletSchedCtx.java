@@ -669,6 +669,8 @@ public class TabletSchedCtx implements Comparable<TabletSchedCtx> {
                 "dest backend " + srcReplica.getBackendId() + " does not exist");
         }
         
+        taskTimeoutMs = getApproximateTimeoutMs();
+
         // create the clone task and clone replica.
         // we use visible version in clone task, but set the clone replica's last failed version to
         // committed version.
@@ -682,7 +684,7 @@ public class TabletSchedCtx implements Comparable<TabletSchedCtx> {
         TBackend tSrcBe = new TBackend(srcBe.getHost(), srcBe.getBePort(), srcBe.getHttpPort());
         cloneTask = new CloneTask(destBackendId, dbId, tblId, partitionId, indexId,
                 tabletId, schemaHash, Lists.newArrayList(tSrcBe), storageMedium,
-                visibleVersion, visibleVersionHash);
+                visibleVersion, visibleVersionHash, (int) (taskTimeoutMs / 1000));
         cloneTask.setPathHash(srcPathHash, destPathHash);
         
         // if this is a balance task, or this is a repair task with REPLICA_MISSING/REPLICA_RELOCATING or REPLICA_MISSING_IN_CLUSTER,
@@ -713,8 +715,6 @@ public class TabletSchedCtx implements Comparable<TabletSchedCtx> {
                         + "current: " + replica.getPathHash() + ", scheduled: " + destPathHash);
             }
         }
-        
-        taskTimeoutMs = getApproximateTimeoutMs();
         
         this.state = State.RUNNING;
         return cloneTask;
@@ -876,6 +876,9 @@ public class TabletSchedCtx implements Comparable<TabletSchedCtx> {
             
             replica.updateVersionInfo(reportedTablet.getVersion(), reportedTablet.getVersion_hash(),
                     reportedTablet.getData_size(), reportedTablet.getRow_count());
+            if (reportedTablet.isSetPath_hash()) {
+                replica.setPathHash(reportedTablet.getPath_hash());
+            }
             
             if (this.type == Type.BALANCE) {
                 long partitionVisibleVersion = partition.getVisibleVersion();

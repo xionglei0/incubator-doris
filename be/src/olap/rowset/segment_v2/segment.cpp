@@ -25,6 +25,7 @@
 #include "olap/rowset/segment_v2/segment_iterator.h"
 #include "util/slice.h" // Slice
 #include "olap/tablet_schema.h"
+#include "util/hash_util.hpp"
 
 namespace doris {
 namespace segment_v2 {
@@ -33,12 +34,10 @@ using strings::Substitute;
 
 Segment::Segment(
         std::string fname, uint32_t segment_id,
-        const std::shared_ptr<TabletSchema>& tablet_schema,
-        size_t num_rows_per_block)
+        const TabletSchema* tablet_schema)
         : _fname(std::move(fname)),
         _segment_id(segment_id),
-        _tablet_schema(tablet_schema),
-        _num_rows_per_block(num_rows_per_block) {
+        _tablet_schema(tablet_schema) {
 }
 
 Segment::~Segment() {
@@ -70,9 +69,10 @@ Status Segment::open() {
     return Status::OK();
 }
 
-Status Segment::new_iterator(const Schema& schema, std::unique_ptr<SegmentIterator>* output) {
-    output->reset(new SegmentIterator(this->shared_from_this(), schema));
-    return Status::OK();
+std::unique_ptr<SegmentIterator> Segment::new_iterator(const Schema& schema, const StorageReadOptions& read_options) {
+    auto it = std::unique_ptr<SegmentIterator>(new SegmentIterator(this->shared_from_this(), schema));
+    it->init(read_options);
+    return it;
 }
 
 // Read data at offset of input file, check if the file content match the magic
@@ -97,10 +97,8 @@ Status Segment::_parse_footer() {
     Slice slice(buf, 8);
     RETURN_IF_ERROR(_input_file->read_at(offset, slice));
 
-    uint32_t footer_length = decode_fixed32_le((uint8_t*)slice.data);
-    uint32_t checksum = decode_fixed32_le((uint8_t*)slice.data + 4);
-
     // check file size footer
+    uint32_t footer_length = decode_fixed32_le((uint8_t*)slice.data);
     if (offset < footer_length) {
         return Status::Corruption(
             Substitute("Bad segment, file size is too small, file_size=$0 vs footer_size=$1",
@@ -112,11 +110,12 @@ Status Segment::_parse_footer() {
     footer_buf.resize(footer_length);
     RETURN_IF_ERROR(_input_file->read_at(offset, footer_buf));
 
-    // TODO(zc): check footer's checksum 
-    if (checksum != 0) {
+    uint32_t expect_checksum = decode_fixed32_le((uint8_t*)slice.data + 4);
+    uint32_t actual_checksum = HashUtil::crc_hash(footer_buf.data(), footer_buf.size(), 0);
+    if (actual_checksum != expect_checksum) {
         return Status::Corruption(
-            Substitute("Bad segment, segment footer checksum not match, real=$0 vs expect=$1",
-                       0, checksum));
+            Substitute("Bad segment, segment footer checksum not match, actual=$0 vs expect=$1",
+                       actual_checksum, expect_checksum));
     }
 
     if (!_footer.ParseFromString(footer_buf)) {
@@ -163,7 +162,7 @@ Status Segment::_initial_column_readers() {
 
         ColumnReaderOptions opts;
         std::unique_ptr<ColumnReader> reader(
-            new ColumnReader(opts, _footer.columns(iter->second), _input_file.get()));
+            new ColumnReader(opts, _footer.columns(iter->second), _footer.num_rows(), _input_file.get()));
         RETURN_IF_ERROR(reader->init());
 
         _column_readers[ordinal] = reader.release();
