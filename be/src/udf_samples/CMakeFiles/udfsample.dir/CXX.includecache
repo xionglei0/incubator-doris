@@ -1,0 +1,16 @@
+#IncludeRegexLine: ^[ 	]*[#%][ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+/root/doris/be/src/udf_samples/udf_hash64.cpp
+udf_samples/udf_hash64.h
+/root/doris/be/src/udf_samples/udf_samples/udf_hash64.h
+
+/root/doris/be/src/udf_samples/udf_sample.cpp
+udf_samples/udf_sample.h
+/root/doris/be/src/udf_samples/udf_samples/udf_sample.h
+
