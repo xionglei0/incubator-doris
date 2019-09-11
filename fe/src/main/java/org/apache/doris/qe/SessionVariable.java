@@ -73,7 +73,8 @@ public class SessionVariable implements Serializable, Writable {
     public static final int MAX_EXEC_INSTANCE_NUM = 32;
     // if set to true, some of stmt will be forwarded to master FE to get result
     public static final String FORWARD_TO_MASTER = "forward_to_master";
-    public static final String DORIS_SHUFFLE_PARTITIONS= "dorisExchangeInstances";
+    // user can set instance num after exchange, no need to be equal to nums of before exchange
+    public static final String DORIS_SHUFFLE_PARTITIONS= "doris_exchange_instances";
 
     // max memory used on every backend.
     @VariableMgr.VarAttr(name = EXEC_MEM_LIMIT)
